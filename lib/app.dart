@@ -13,6 +13,7 @@ import 'core/layout/ui_density.dart';
 import 'core/services/external_media_intent_service.dart';
 import 'core/services/fm_widget_sync.dart';
 import 'core/services/desktop_lyric_service.dart';
+import 'core/services/app_update_service.dart';
 import 'core/services/lyricon_provider_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/motion_constants.dart';
@@ -233,6 +234,11 @@ class _AppViewState extends State<_AppView> {
       ExternalMediaIntentService.instance.start();
       // 媒体通知栏歌词管线：绑定 Player 并开始 tick（无需开悬浮窗）
       DesktopLyricService.instance.ensureNotificationLyricPipeline();
+      // 延迟检查更新：避开启动闪屏/协议页，再弹强制/可选更新框
+      Future<void>.delayed(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        AppUpdateService.instance.checkAndPrompt(context);
+      });
     });
   }
 

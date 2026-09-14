@@ -22,6 +22,7 @@ import '../../core/widgets/app_background.dart' show kDefaultWallpaperAsset;
 import '../../core/services/custom_font_loader.dart';
 import '../../core/utils/app_toast.dart';
 import '../../core/services/desktop_lyric_service.dart';
+import '../../core/services/app_update_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../core/services/lyricon_provider_service.dart';
 import '../../core/services/media_notification_service.dart';
@@ -2607,10 +2608,10 @@ class _SettingsPageState extends State<SettingsPage>
         // search: 更新
         ListTile(
           title: const Text('更新最新版本'),
-          subtitle: const Text('https://github.com/nlxxtw/md3Music-Next/releases'),
+          subtitle: const Text('检查并跳转到更新地址'),
           leading: const Icon(Icons.system_update_outlined),
           trailing: const Icon(Icons.open_in_new, size: 18),
-          onTap: () => _openReleasesUrl(),
+          onTap: () => _checkOrOpenUpdate(),
         ),
         // 渲染引擎与版本号同属"当前构建的事实"，故并入版本组：
         // 由构建期 flavor 决定（skia / impeller），运行时不可切换，只读展示。
@@ -2737,11 +2738,19 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
-  Future<void> _openReleasesUrl() async {
-    const url = 'https://github.com/nlxxtw/md3Music-Next/releases';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+  Future<void> _checkOrOpenUpdate() async {
+    try {
+      final decision = await AppUpdateService.instance.evaluate();
+      if (!mounted) return;
+      if (decision != null && decision.kind != AppUpdateKind.none) {
+        await AppUpdateService.showUpdateDialog(context, decision);
+        return;
+      }
+      await AppUpdateService.instance.openUpdateUrl(
+        overrideUrl: decision?.info.url,
+      );
+    } catch (_) {
+      await AppUpdateService.instance.openUpdateUrl();
     }
   }
 
