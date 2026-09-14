@@ -836,35 +836,25 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
     return !_parsedLyrics.any((line) => line.hasWordTiming);
   }
 
-  /// 构建横屏布局的封面内容：style 0/1 用 SpectrumArtwork（白色），style 2 用原封面
+  /// 构建横屏布局的封面内容：默认圆形慢转黑胶；开启频谱 style 0/1 时叠加环形柱。
   Widget _buildLandscapeArtworkContent(
     PlayerProvider playerProvider,
     dynamic currentSong,
     ColorScheme colorScheme,
   ) {
-    if (_spectrumEnabled && _spectrumStyle < 2) {
-      return SpectrumArtwork(
-        artworkUri: currentSong.artworkUri,
-        fallbackFilePath: currentSong.localPath,
-        isPlaying: playerProvider.isPlaying,
-        bandCount: SpectrumService.instance.bandCount,
-        style: _spectrumStyle,
-        barColor: _spectrumColor,
-        opacity: _spectrumOpacity,
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Selector<PlayerProvider, (String?, String?)>(
-        selector: (_, p) =>
-            (p.currentSong?.artworkUri, p.currentSong?.localPath),
-        builder: (context, data, __) => _buildCrossfadeArtwork(
-          data.$1,
-          colorScheme,
-          iconSize: 48,
-          fallbackFilePath: data.$2,
-        ),
-      ),
+    final showBars = _spectrumEnabled && _spectrumStyle < 2;
+    return SpectrumArtwork(
+      artworkUri: currentSong.artworkUri,
+      fallbackFilePath: currentSong.localPath,
+      isPlaying: playerProvider.isPlaying,
+      bandCount: SpectrumService.instance.bandCount,
+      style: _spectrumStyle,
+      barColor: _spectrumColor,
+      opacity: _spectrumOpacity,
+      showBars: showBars,
+      rotationDuration: showBars
+          ? const Duration(seconds: 8)
+          : const Duration(seconds: 20),
     );
   }
 
@@ -1608,13 +1598,8 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                                 onVerticalDragCancel: _onTopBarDragCancel,
                                 child: _wrapArtworkZenPress(
                                   child: AnimatedScale(
-                                    // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                                    scale:
-                                        _spectrumEnabled && _spectrumStyle < 2
-                                        ? 1.0
-                                        : (playerProvider.isPlaying
-                                              ? 1.0
-                                              : 0.85),
+                                    // 圆形慢转封面不需要暂停缩小动画
+                                    scale: 1.0,
                                     duration: const Duration(milliseconds: 500),
                                     curve: Curves.easeOutBack,
                                     child: _buildLandscapeArtworkContent(
@@ -1793,13 +1778,8 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                                   onVerticalDragCancel: _onTopBarDragCancel,
                                   child: _wrapArtworkZenPress(
                                     child: AnimatedScale(
-                                      // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                                      scale:
-                                          _spectrumEnabled && _spectrumStyle < 2
-                                          ? 1.0
-                                          : (playerProvider.isPlaying
-                                                ? 1.0
-                                                : 0.85),
+                                      // 圆形慢转封面不需要暂停缩小动画
+                                      scale: 1.0,
                                       duration: const Duration(
                                         milliseconds: 500,
                                       ),
@@ -2036,32 +2016,24 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                       child: AspectRatio(
                         aspectRatio: 1,
                         child: AnimatedScale(
-                          // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                          scale: _spectrumEnabled && _spectrumStyle < 2
-                              ? 1.0
-                              : (playerProvider.isPlaying ? 1.0 : 0.85),
+                          // 圆形慢转封面不需要暂停缩小动画
+                          scale: 1.0,
                           duration: const Duration(milliseconds: 500),
                           curve: Curves.easeOutBack,
-                          // 频谱模式：style 0/1 白色圆形旋转封面 + 环形频谱
-                          child: _spectrumEnabled && _spectrumStyle < 2
-                              ? SpectrumArtwork(
-                                  artworkUri: currentSong.artworkUri,
-                                  fallbackFilePath: currentSong.localPath,
-                                  isPlaying: playerProvider.isPlaying,
-                                  bandCount: SpectrumService.instance.bandCount,
-                                  style: _spectrumStyle,
-                                  barColor: _spectrumColor,
-                                  opacity: _spectrumOpacity,
-                                )
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: _buildCrossfadeArtwork(
-                                    currentSong.artworkUri,
-                                    colorScheme,
-                                    iconSize: iconSize,
-                                    fallbackFilePath: currentSong.localPath,
-                                  ),
-                                ),
+                          child: SpectrumArtwork(
+                            artworkUri: currentSong.artworkUri,
+                            fallbackFilePath: currentSong.localPath,
+                            isPlaying: playerProvider.isPlaying,
+                            bandCount: SpectrumService.instance.bandCount,
+                            style: _spectrumStyle,
+                            barColor: _spectrumColor,
+                            opacity: _spectrumOpacity,
+                            showBars: _spectrumEnabled && _spectrumStyle < 2,
+                            rotationDuration:
+                                (_spectrumEnabled && _spectrumStyle < 2)
+                                ? const Duration(seconds: 8)
+                                : const Duration(seconds: 20),
+                          ),
                         ),
                       ),
                     ),
@@ -2073,25 +2045,19 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
             Expanded(
               child: AspectRatio(
                 aspectRatio: 1,
-                child: _spectrumEnabled && _spectrumStyle < 2
-                    ? SpectrumArtwork(
-                        artworkUri: currentSong.artworkUri,
-                        fallbackFilePath: currentSong.localPath,
-                        isPlaying: playerProvider.isPlaying,
-                        bandCount: SpectrumService.instance.bandCount,
-                        style: _spectrumStyle,
-                        barColor: _spectrumColor,
-                        opacity: _spectrumOpacity,
-                      )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
-                        child: _buildCrossfadeArtwork(
-                          currentSong.artworkUri,
-                          colorScheme,
-                          iconSize: iconSize,
-                          fallbackFilePath: currentSong.localPath,
-                        ),
-                      ),
+                child: SpectrumArtwork(
+                  artworkUri: currentSong.artworkUri,
+                  fallbackFilePath: currentSong.localPath,
+                  isPlaying: playerProvider.isPlaying,
+                  bandCount: SpectrumService.instance.bandCount,
+                  style: _spectrumStyle,
+                  barColor: _spectrumColor,
+                  opacity: _spectrumOpacity,
+                  showBars: _spectrumEnabled && _spectrumStyle < 2,
+                  rotationDuration: (_spectrumEnabled && _spectrumStyle < 2)
+                      ? const Duration(seconds: 8)
+                      : const Duration(seconds: 20),
+                ),
               ),
             ),
           SizedBox(height: textSpacing),

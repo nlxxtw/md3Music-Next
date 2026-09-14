@@ -10,8 +10,7 @@
 
 MD3Music 是一款基于酷狗音乐 API 的 Flutter 音乐播放器，采用 Material Design 3 设计规范，内置嵌入式 Rust API 服务器，无需外部服务器即可使用。支持手机/平板自适应，提供 Apple Music 风格播放页与逐字歌词，并通过 LaunchPad 导航聚合编辑精选、听书、场景音乐、频道等功能。本项目仅供学习，请勿用于商业用途，详情见[免责声明](DISCLAIMER.md)。
 
-> **版本说明**：V5 之前的所有版本与分支均已废弃并彻底删除，请勿使用过时版本。最新版请前往 [GitHub Releases](https://github.com/zzyoxml/md3Music/releases)。
-> 由于私有库开发同步会覆盖公开库代码，公开库代码现由脚本全量推送至公开库 `rust-local-force` 分支。
+> **版本说明**：当前版本为 **4.0**。最新版请前往本仓库 [GitHub Releases](https://github.com/nlxxtw/md3Music-Next/releases)（已与原作者仓库更新通道断开）。
 > **投屏功能声明**：投屏采用行业标准的通用传输协议（DLNA/AirPlay），仅用于在个人家庭网络内将音乐流转至用户本人合法拥有的播放设备，不涉及对音乐文件的再存储、分发或向公众传播。请勿用于公共场所播放或多人同步观看场景，否则由此引发的一切法律责任由使用者自行承担。
 
 ---
@@ -223,7 +222,7 @@ MD3Music 是一款基于酷狗音乐 API 的 Flutter 音乐播放器，采用 Ma
 ### 1. 克隆项目
 
 ```bash
-git clone https://github.com/zzyoxml/md3Music.git
+git clone https://github.com/nlxxtw/md3Music-Next.git
 cd md3Music
 ```
 
@@ -476,4 +475,4 @@ A: Rust 的 TLS 依赖（`ring` crate）需要交叉编译为 Android 平台的 
 
 ---
 
-**Made with ❤️ by zzyoxml**
+**Made with ❤️ by nlxxtw** · based on md3Music

@@ -222,6 +222,35 @@ class MediaNotificationService {
     } catch (_) {}
   }
 
+  /// 媒体通知栏歌词：歌名下方显示当前行，已唱白 / 未唱灰（原生自驱动推进）。
+  static Future<void> updateNotificationLyric({
+    required String lyric,
+    List<Map<String, Object?>> words = const [],
+    int positionMs = 0,
+    bool isPlaying = true,
+    int lineStartMs = 0,
+    int lineEndMs = 0,
+  }) async {
+    try {
+      await _channel.invokeMethod('updateNotificationLyric', {
+        'lyric': lyric,
+        'words': words,
+        'positionMs': positionMs,
+        'isPlaying': isPlaying,
+        'lineStartMs': lineStartMs,
+        'lineEndMs': lineEndMs,
+      });
+    } catch (_) {}
+  }
+
+  static Future<void> setNotificationLyricPlaying(bool isPlaying) async {
+    try {
+      await _channel.invokeMethod('setNotificationLyricPlaying', {
+        'isPlaying': isPlaying,
+      });
+    } catch (_) {}
+  }
+
   static Future<void> setBluetoothLyricEnabled(bool enabled) async {
     try {
       await _channel.invokeMethod('setBluetoothLyricEnabled', {

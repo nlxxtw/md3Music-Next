@@ -2607,7 +2607,7 @@ class _SettingsPageState extends State<SettingsPage>
         // search: 更新
         ListTile(
           title: const Text('更新最新版本'),
-          subtitle: const Text('https://github.com/zzyoxml/md3Music/releases'),
+          subtitle: const Text('https://github.com/nlxxtw/md3Music-Next/releases'),
           leading: const Icon(Icons.system_update_outlined),
           trailing: const Icon(Icons.open_in_new, size: 18),
           onTap: () => _openReleasesUrl(),
@@ -2738,7 +2738,7 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _openReleasesUrl() async {
-    const url = 'https://github.com/zzyoxml/md3Music/releases';
+    const url = 'https://github.com/nlxxtw/md3Music-Next/releases';
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);

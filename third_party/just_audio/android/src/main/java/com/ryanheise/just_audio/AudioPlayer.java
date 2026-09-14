@@ -1176,6 +1176,18 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         return p != null ? p.mediaSession : null;
     }
 
+    /** 强制刷新媒体3 now-playing 通知（歌词 contentText 更新后调用）。 */
+    public static void refreshActiveNotification() {
+        MediaSessionService host = sSessionHost;
+        MediaSession session = getActiveMediaSession();
+        if (host == null || session == null) return;
+        try {
+            host.refreshNotification(session);
+        } catch (Exception e) {
+            Log.w("AudioFocusFork", "refreshActiveNotification failed: " + e);
+        }
+    }
+
     /// 幂等地把活跃会话加入已注册的 host（重复加入会抛 IllegalArgumentException）。
     /// MD3Music fork（方向1·安全收敛）：再把「非活跃播放器」的会话从 host 移除（不 release
     /// 播放器、不置 null），使系统仅暴露当前活跃播放器的一个会话。调用方保证 sActivePlayer

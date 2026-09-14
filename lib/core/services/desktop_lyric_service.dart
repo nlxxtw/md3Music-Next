@@ -220,6 +220,12 @@ class DesktopLyricService {
     };
   }
 
+  /// 首帧后绑定 Player 并启动通知栏歌词 tick（无需开悬浮窗）。
+  void ensureNotificationLyricPipeline() {
+    _bindProvidersFromContext();
+    _updateTicker();
+  }
+
   Future<void> _handleToggleFavorite() async {
     final ctx = appNavigatorKey.currentContext;
     if (ctx == null) return;
@@ -590,13 +596,17 @@ class DesktopLyricService {
     }
   }
 
-  /// 定时器是否需要运行：悬浮窗、蓝牙歌词、LyricInfo、SuperLyric 或锁屏歌词任一开启即需运行
-  bool _shouldTick() =>
-      _enabled ||
-      _bluetoothLyricEnabled ||
-      _lyricInfoEnabled ||
-      _superLyricEnabled ||
-      _lockScreenLyricEnabled;
+  /// 定时器是否需要运行：有当前歌曲时为通知栏歌词 tick；
+  /// 或悬浮窗 / 蓝牙 / LyricInfo / SuperLyric / 锁屏任一开启。
+  bool _shouldTick() {
+    final hasSong = _player?.currentSong != null;
+    return hasSong ||
+        _enabled ||
+        _bluetoothLyricEnabled ||
+        _lyricInfoEnabled ||
+        _superLyricEnabled ||
+        _lockScreenLyricEnabled;
+  }
 
   /// 根据开关状态启停定时器（250ms tick：逐行歌词足够检测切行）
   void _updateTicker() {
@@ -676,6 +686,8 @@ class DesktopLyricService {
   // 仅翻转时推送，position 刷新触发的 notifyListeners 不受影响。
   // 基线由 _pushPlaying 成功后更新：失败时 tick 自愈会在下个周期重试。
   void _onPlayerChanged() {
+    // 切歌 / 有无歌曲变化时启停通知栏歌词 tick
+    _updateTicker();
     final playing = _player?.isPlaying ?? false;
     if (playing == _lastPushedPlaying) return;
     // ignore: discarded_futures
@@ -742,10 +754,17 @@ class DesktopLyricService {
   }
 
   Future<void> _pushPlaying(bool playing) async {
-    // 同 _pushProgress：仅悬浮窗开启时推送。
+    // 通知栏歌词播放态：始终同步（暂停冻结白/灰推进）
+    try {
+      await MediaNotificationService.setNotificationLyricPlaying(playing);
+    } catch (_) {}
+    // 悬浮窗：仅开启时推送。
     // 推送成功才更新基线：失败时基线保持旧值，让 tick 自愈机制
     // 在下个周期重试（否则失败后永远不再推送，暂停冻结失效）。
-    if (!_enabled) return;
+    if (!_enabled) {
+      _lastPushedPlaying = playing;
+      return;
+    }
     try {
       await _channel.invokeMethod('setPlaying', {'isPlaying': playing});
       _lastPushedPlaying = playing;
@@ -754,11 +773,12 @@ class DesktopLyricService {
 
   void _onTick() {
     if (!_shouldTick()) return;
-    // 熄屏且未开锁屏歌词：悬浮窗不可见，tick 纯耗电，直接休眠
-    // （点亮屏幕时由 screenStateChanged 回调补一拍对齐漂移）
+    // 熄屏且未开锁屏歌词：无当前歌曲时休眠；有歌时仍为媒体通知栏推送歌词行
     if (!_screenOn && !_lockScreenLyricEnabled) {
-      _cancelLineTimer();
-      return;
+      if (_player?.currentSong == null) {
+        _cancelLineTimer();
+        return;
+      }
     }
     // provider 未绑定时（如 app 启动早期 context 未就绪）尝试重新绑定，
     // 绑定成功后下个 tick 即可正常推送；仍失败则跳过本次
@@ -788,6 +808,9 @@ class DesktopLyricService {
       _cancelLineTimer();
       // 锁屏歌词：清空界面，避免残留上一首歌词
       _markLockLyricLoaded('');
+      // 媒体通知栏歌词清空，回退显示歌手名
+      // ignore: discarded_futures
+      MediaNotificationService.updateNotificationLyric(lyric: '');
       return;
     }
 
@@ -1002,6 +1025,27 @@ class DesktopLyricService {
       {String placeholder = '',
       List<Map<String, Object?>> words = const [],
       int positionMs = 0}) async {
+    // 媒体通知栏歌词：歌名下方白/灰跑马灯（始终推送，不依赖悬浮窗开关）
+    try {
+      if (placeholder.isNotEmpty || current.trim().isEmpty) {
+        await MediaNotificationService.updateNotificationLyric(lyric: '');
+      } else {
+        final line = (_currentLineIndex >= 0 && _currentLineIndex < _lines.length)
+            ? _lines[_currentLineIndex]
+            : null;
+        final end = line == null
+            ? 0
+            : (line.endTime > line.startTime ? line.endTime : line.startTime + 5000);
+        await MediaNotificationService.updateNotificationLyric(
+          lyric: current,
+          words: words,
+          positionMs: positionMs,
+          isPlaying: _player?.isPlaying ?? false,
+          lineStartMs: line?.startTime ?? 0,
+          lineEndMs: end,
+        );
+      }
+    } catch (_) {}
     if (_enabled) {
       try {
         await _channel.invokeMethod('updateLyric', {

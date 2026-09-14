@@ -55,6 +55,13 @@ class ConvolutionPlugin {
                     ConvolutionController.getInstance().setMix(wet, dry)
                     result.success(true)
                 }
+                "setOrbit" -> {
+                    val enabled = call.argument<Boolean>("enabled") ?: false
+                    val hz = (call.argument<Number>("hz") ?: 0.12).toFloat()
+                    val depth = (call.argument<Number>("depth") ?: 0.9).toFloat()
+                    ConvolutionController.getInstance().setOrbit(enabled, hz, depth)
+                    result.success(true)
+                }
                 "clear" -> {
                     ConvolutionController.getInstance().clear()
                     result.success(true)
@@ -69,6 +76,8 @@ class ConvolutionPlugin {
                             "path" to ctrl.loadedPath,
                             "wet" to ctrl.wet,
                             "dry" to ctrl.dry,
+                            "orbit" to ctrl.isOrbitEnabled,
+                            "orbitHz" to ctrl.orbitHz,
                         ),
                     )
                 }

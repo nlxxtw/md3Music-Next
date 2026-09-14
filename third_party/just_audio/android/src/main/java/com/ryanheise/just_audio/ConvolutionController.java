@@ -26,6 +26,14 @@ public final class ConvolutionController {
   private volatile float dry = 0.35f;
   private volatile float outputGain = 1.0f;
 
+  /**
+   * 360 orbit: slowly pans the wet image L↔R around the head.
+   * Static IR alone cannot "run" left/right — orbit supplies the motion.
+   */
+  private volatile boolean orbitEnabled;
+  private volatile float orbitHz = 0.12f;
+  private volatile float orbitDepth = 0.9f;
+
   /** True when IR is 4-channel binaural matrix. */
   private volatile boolean binaural;
 
@@ -75,6 +83,24 @@ public final class ConvolutionController {
 
   public void setOutputGain(float gain) {
     this.outputGain = Math.max(0.05f, Math.min(gain, 4.0f));
+  }
+
+  public void setOrbit(boolean enabled, float hz, float depth) {
+    this.orbitEnabled = enabled;
+    this.orbitHz = Math.max(0.02f, Math.min(hz, 1.0f));
+    this.orbitDepth = clamp01(depth);
+  }
+
+  public boolean isOrbitEnabled() {
+    return orbitEnabled;
+  }
+
+  public float getOrbitHz() {
+    return orbitHz;
+  }
+
+  public float getOrbitDepth() {
+    return orbitDepth;
   }
 
   public float getWet() {
@@ -182,6 +208,7 @@ public final class ConvolutionController {
     irChannels = 1;
     irSampleRate = 44100;
     binaural = false;
+    orbitEnabled = false;
     loadedPath = "";
     enabled = false;
     clearRateCache();
@@ -232,15 +259,48 @@ public final class ConvolutionController {
     clearRateCache();
 
     // Safer mix: high wet + dry caused clipping that sounded like noise.
-    if (binaural) {
-      wet = 0.62f;
-      dry = 0.55f;
+    String name = label == null ? "" : label;
+    boolean orbitPreset = isOrbitPresetName(name);
+    if (orbitPreset) {
+      // Strong wet + light dry so L↔R orbit is audible; gain keeps headroom.
+      wet = 0.88f;
+      dry = 0.18f;
+      outputGain = 0.78f;
+      // 宽景稍快、深空稍慢；双耳近场更快一点更有定位感
+      float hz = 0.11f;
+      if (name.contains("深空")) {
+        hz = 0.07f;
+      } else if (name.contains("近场")) {
+        hz = 0.14f;
+      } else if (name.contains("舞台")) {
+        hz = 0.09f;
+      } else if (name.contains("宽景") || name.contains("8D")) {
+        hz = 0.12f;
+      }
+      orbitEnabled = true;
+      orbitHz = hz;
+      orbitDepth = 0.92f;
+    } else if (binaural) {
+      wet = 0.72f;
+      dry = 0.35f;
       outputGain = 0.85f;
+      orbitEnabled = false;
     } else {
       wet = 0.75f;
       dry = 0.40f;
       outputGain = 0.9f;
+      orbitEnabled = false;
     }
+  }
+
+  /** 8D / 双耳3D presets get runtime 360 orbit (static IR cannot pan by itself). */
+  private static boolean isOrbitPresetName(String path) {
+    String n = path.replace('\\', '/');
+    int slash = n.lastIndexOf('/');
+    if (slash >= 0) {
+      n = n.substring(slash + 1);
+    }
+    return n.startsWith("8D") || n.startsWith("双耳");
   }
 
   private static float[] zerosLike(float[] src) {

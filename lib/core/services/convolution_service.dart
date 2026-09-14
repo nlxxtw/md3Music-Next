@@ -45,7 +45,7 @@ class ConvolutionService extends ChangeNotifier {
   static const _prefsNameKey = 'conv_applied_name';
   static const _prefsEnabledKey = 'conv_enabled';
   static const _extractMarker = '.zip_ver';
-  static const _extractVer = 'viper_local_v3_resample';
+  static const _extractVer = 'viper_local_v4_purge_srs_plii';
 
   List<LocalSoundPreset> _presets = const [];
   String? _appliedFile;

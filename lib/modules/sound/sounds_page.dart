@@ -53,7 +53,12 @@ class _SoundsPageState extends State<SoundsPage> {
     try {
       await _conv.apply(item);
       if (!mounted) return;
-      showToast('已应用「${item.name}」· 卷积脉冲');
+      final orbit = item.tag == '8D' || item.tag == '双耳3D';
+      showToast(
+        orbit
+            ? '已应用「${item.name}」· 360环绕（左右绕转）'
+            : '已应用「${item.name}」· 卷积脉冲',
+      );
     } catch (e) {
       showToast('应用失败：$e');
     }
@@ -118,7 +123,7 @@ class _SoundsPageState extends State<SoundsPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '内置 ${_conv.presets.length} 个脉冲 · 真卷积（非均衡器模拟）',
+                    '内置 ${_conv.presets.length} 个脉冲 · 8D/双耳3D 为 360 绕转环绕',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),

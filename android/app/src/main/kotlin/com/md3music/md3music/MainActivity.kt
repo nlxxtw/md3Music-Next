@@ -494,6 +494,34 @@ class MainActivity : FlutterActivity() {
                     startService(intent)
                     result.success(true)
                 }
+                // 媒体通知栏歌词（歌名下方：已唱白 / 未唱灰）
+                "updateNotificationLyric" -> {
+                    val lyric = call.argument<String>("lyric") ?: ""
+                    val words = call.argument<List<Map<String, Any?>>>("words")
+                    val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+                    val isPlaying = call.argument<Boolean>("isPlaying") ?: true
+                    val lineStartMs = (call.argument<Number>("lineStartMs") ?: 0).toLong()
+                    val lineEndMs = (call.argument<Number>("lineEndMs") ?: 0).toLong()
+                    if (lyric.isEmpty()) {
+                        NotificationLyricStore.clear()
+                    } else {
+                        NotificationLyricStore.updateLine(
+                            lyric,
+                            words,
+                            positionMs,
+                            isPlaying,
+                            lineStartMs,
+                            lineEndMs,
+                        )
+                    }
+                    result.success(true)
+                }
+                "setNotificationLyricPlaying" -> {
+                    NotificationLyricStore.onPlayingChanged(
+                        call.argument<Boolean>("isPlaying") ?: false
+                    )
+                    result.success(true)
+                }
                 // 蓝牙歌词：开关切换
                 "setBluetoothLyricEnabled" -> {
                     val intent = Intent(this, AudioPlaybackService::class.java).apply {

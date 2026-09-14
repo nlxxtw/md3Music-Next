@@ -1149,8 +1149,11 @@ class AudioPlaybackService : Service() {
         // ACTION_REFRESH_FOREGROUND 或下一次周期通知更新恢复。
         // 用存活探测而非纯标志位：桌面歌词被系统强杀时 onDestroy 可能未执行、
         // isRunning 残留 true，此时不能继续让位（会失去前台保护）。
-        if (isFloatingLyricActuallyRunning()) {
-            // 让位给 FloatingLyricService（1003 常驻 FGS 撑住进程前台）。
+        //
+        // 同样：媒体3 now-playing（MD3MusicMediaSessionService / 通知 1001）已是
+        // mediaPlayback FGS 时，也让位移除 1002，避免通知中心出现「MD3Music」空通知。
+        if (isFloatingLyricActuallyRunning() || isMediaSessionServiceRunning()) {
+            // 让位给 FloatingLyricService / MediaSessionService。
             // 但 startForegroundService 拉起本服务会产生"5 秒内必须 startForeground"
             // 的系统义务，直接跳过会触发 ForegroundServiceDidNotStartInTimeException
             // 闪退（实测 2026-09-02：桌面歌词运行中暂停/恢复等媒体状态变化重启本服务即崩）。
@@ -1160,7 +1163,7 @@ class AudioPlaybackService : Service() {
                 try { stopForeground(Service.STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
             } catch (_: Throwable) {}
             foregroundStarted = false
-            Log.d(TAG, "startForegroundDetached: deferred to FloatingLyricService")
+            Log.d(TAG, "startForegroundDetached: deferred (lyric/media3 holding FGS)")
             return
         }
         try {
@@ -1189,17 +1192,21 @@ class AudioPlaybackService : Service() {
 
     /// 前台服务占位通知：唤醒场景下服务可能刚被 startForegroundService 拉起，
     /// 需要尽快进入前台。真实内容随后由 Dart 端 updateNotification 覆盖。
+    /// 使用空标题 + 保活频道，避免通知中心出现「MD3Music」占位条。
     private fun ensureForeground() {
         if (foregroundStarted) return
         foregroundStarted = true
         try {
-            val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            val builder = NotificationCompat.Builder(this, KEEPALIVE_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle("md3music")
-                .setContentText("准备播放")
+                .setContentTitle("")
+                .setContentText("")
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setShowWhen(false)
+                .setSilent(true)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             startForegroundDetached(builder)
         } catch (_: Exception) {}
     }
@@ -1242,6 +1249,18 @@ class AudioPlaybackService : Service() {
                 .any { it.service.className == FloatingLyricService::class.java.name }
         } catch (_: Exception) {
             true // 探测失败时保守按标志位处理（不打断正常让位）
+        }
+    }
+
+    /// 媒体3 会话服务是否在跑：其 now-playing 通知（1001）已是 mediaPlayback FGS，
+    /// 可让位移除本服务保活空通知（1002），避免通知中心双通知。
+    private fun isMediaSessionServiceRunning(): Boolean {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            am.getRunningServices(100)
+                .any { it.service.className == MD3MusicMediaSessionService::class.java.name }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -1481,6 +1500,28 @@ class AudioPlaybackService : Service() {
                     "updateBluetoothLyric" -> {
                         currentBtLyricText = call.argument<String>("lyric") ?: ""
                         refreshMetadata()
+                        result.success(true)
+                    }
+                    "updateNotificationLyric" -> {
+                        val lyric = call.argument<String>("lyric") ?: ""
+                        val words = call.argument<List<Map<String, Any?>>>("words")
+                        val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+                        val isPlaying = call.argument<Boolean>("isPlaying") ?: true
+                        val lineStartMs = (call.argument<Number>("lineStartMs") ?: 0).toLong()
+                        val lineEndMs = (call.argument<Number>("lineEndMs") ?: 0).toLong()
+                        if (lyric.isEmpty()) {
+                            NotificationLyricStore.clear()
+                        } else {
+                            NotificationLyricStore.updateLine(
+                                lyric, words, positionMs, isPlaying, lineStartMs, lineEndMs
+                            )
+                        }
+                        result.success(true)
+                    }
+                    "setNotificationLyricPlaying" -> {
+                        NotificationLyricStore.onPlayingChanged(
+                            call.argument<Boolean>("isPlaying") ?: false
+                        )
                         result.success(true)
                     }
                     "setBluetoothLyricEnabled" -> {
@@ -1924,6 +1965,17 @@ class AudioPlaybackService : Service() {
         // 不再 DETACH，防止服务被系统降级导致后台网络受限）；
         // 元数据由媒体3会话注入（见下），无需本服务发布 MediaSession 元数据。
         startForegroundDetached(builder)
+        // 媒体3 通知可能稍晚才起来：延迟再探测一次，起来后让位移除空通知，
+        // 避免通知中心长期并列「MD3Music」空条 + 媒体控制卡。
+        Handler(Looper.getMainLooper()).postDelayed({
+            try {
+                if (isMediaSessionServiceRunning() || isFloatingLyricActuallyRunning()) {
+                    try { stopForeground(Service.STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
+                    foregroundStarted = false
+                    Log.d(TAG, "deferred remove keepalive after media3/lyric up")
+                }
+            } catch (_: Throwable) {}
+        }, 900)
         scheduleMetadataRefresh()
 
         // P0: 不再广播「无 bitmap」的首帧 metadata——SystemUI 控制中心主面板

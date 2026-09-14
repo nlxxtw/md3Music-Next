@@ -12,6 +12,7 @@ import 'core/layout/responsive_layout.dart';
 import 'core/layout/ui_density.dart';
 import 'core/services/external_media_intent_service.dart';
 import 'core/services/fm_widget_sync.dart';
+import 'core/services/desktop_lyric_service.dart';
 import 'core/services/lyricon_provider_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/motion_constants.dart';
@@ -230,6 +231,8 @@ class _AppViewState extends State<_AppView> {
       // 并主动拉取一次冷启动期间原生侧积压的待处理音频
       // ignore: discarded_futures
       ExternalMediaIntentService.instance.start();
+      // 媒体通知栏歌词管线：绑定 Player 并开始 tick（无需开悬浮窗）
+      DesktopLyricService.instance.ensureNotificationLyricPipeline();
     });
   }
 

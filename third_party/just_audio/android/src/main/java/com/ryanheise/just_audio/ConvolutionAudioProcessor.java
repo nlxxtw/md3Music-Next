@@ -49,6 +49,14 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
   private final float[] timeBuf = new float[FFT_SIZE];
   private final float[] timeBufR = new float[FFT_SIZE];
 
+  /** Haas / ITD delay lines for 360 orbit (~1.3 ms @ 48 kHz). */
+  private static final int ORBIT_DELAY_LEN = 64;
+  private final float[] orbitDelayL = new float[ORBIT_DELAY_LEN];
+  private final float[] orbitDelayR = new float[ORBIT_DELAY_LEN];
+  private int orbitDelayWrite;
+  private float orbitPhase;
+  private final float[] orbitTmp = new float[2];
+
   @Override
   public AudioFormat onConfigure(AudioFormat inputAudioFormat)
       throws UnhandledAudioFormatException {
@@ -139,18 +147,80 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     ifftToTime(accL, timeBuf);
     ifftToTime(accR, timeBufR);
 
+    boolean orbit = controller.isOrbitEnabled();
+    float orbitHz = controller.getOrbitHz();
+    float orbitDepth = controller.getOrbitDepth();
+    float phaseStep =
+        orbit && sampleRate > 0 ? (float) (2.0 * Math.PI * orbitHz / sampleRate) : 0f;
+    // Max ITD ~0.65 ms (enough for clear L/R without comb noise).
+    int maxItd = Math.max(1, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 1500));
+
     for (int i = 0; i < BLOCK; i++) {
       float wetL = timeBuf[i] + overlapL[i];
       overlapL[i] = timeBuf[i + BLOCK];
+      float wetR = timeBufR[i] + overlapR[i];
+      overlapR[i] = timeBufR[i + BLOCK];
+
+      if (orbit) {
+        orbitPhase += phaseStep;
+        if (orbitPhase > (float) (2.0 * Math.PI)) {
+          orbitPhase -= (float) (2.0 * Math.PI);
+        }
+        float[] orb = applyOrbit(wetL, wetR, orbitPhase, orbitDepth, maxItd);
+        wetL = orb[0];
+        wetR = orb[1];
+      }
+
       float outL = softLimit((dry * inBlockL[i] + wet * wetL) * gain);
       out.putShort(floatToShort(outL));
       if (channelCount > 1) {
-        float wetR = timeBufR[i] + overlapR[i];
-        overlapR[i] = timeBufR[i + BLOCK];
         float outR = softLimit((dry * inBlockR[i] + wet * wetR) * gain);
         out.putShort(floatToShort(outR));
       }
     }
+  }
+
+  /**
+   * Rotate a mid image around the head: equal-power pan + Haas ITD.
+   * Keeps a little of the IR stereo width so it doesn't collapse to mono.
+   */
+  private float[] applyOrbit(float wetL, float wetR, float phase, float depth, int maxItd) {
+    float mid = 0.5f * (wetL + wetR);
+    float side = 0.5f * (wetL - wetR);
+
+    // az: 0=front, +π/2=right, π=back, +3π/2=left — full 360.
+    float sinA = (float) Math.sin(phase);
+    float cosA = (float) Math.cos(phase);
+    // Equal-power pan from sin(az): -1 left … +1 right
+    float pan = sinA;
+    float angle = (pan + 1f) * (float) (Math.PI / 4.0);
+    float gL = (float) Math.cos(angle);
+    float gR = (float) Math.sin(angle);
+    // Slightly quieter behind the head (more natural circle)
+    float frontBias = 0.72f + 0.28f * Math.max(0f, cosA);
+    gL *= frontBias;
+    gR *= frontBias;
+
+    // Haas: delay the contralateral ear so the image "runs" around.
+    int dL = pan > 0f ? Math.round(pan * maxItd) : 0;
+    int dR = pan < 0f ? Math.round(-pan * maxItd) : 0;
+    orbitDelayL[orbitDelayWrite] = mid;
+    orbitDelayR[orbitDelayWrite] = mid;
+    int idxL = orbitDelayWrite - dL;
+    if (idxL < 0) idxL += ORBIT_DELAY_LEN;
+    int idxR = orbitDelayWrite - dR;
+    if (idxR < 0) idxR += ORBIT_DELAY_LEN;
+    float delayedL = orbitDelayL[idxL];
+    float delayedR = orbitDelayR[idxR];
+    orbitDelayWrite = (orbitDelayWrite + 1) % ORBIT_DELAY_LEN;
+
+    float orbL = delayedL * gL;
+    float orbR = delayedR * gR;
+    // Blend orbit mono-pan with a bit of IR side for width
+    float width = 0.28f;
+    orbitTmp[0] = depth * (orbL + width * side) + (1f - depth) * wetL;
+    orbitTmp[1] = depth * (orbR - width * side) + (1f - depth) * wetR;
+    return orbitTmp;
   }
 
   private void passthrough(ByteBuffer inputBuffer) {
@@ -186,6 +256,10 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     Arrays.fill(overlapR, 0f);
     Arrays.fill(inBlockL, 0f);
     Arrays.fill(inBlockR, 0f);
+    Arrays.fill(orbitDelayL, 0f);
+    Arrays.fill(orbitDelayR, 0f);
+    orbitDelayWrite = 0;
+    // Keep orbitPhase so rotation stays continuous across flushes of small gaps.
     ringWrite = 0;
     for (float[] slot : xFftRingL) {
       Arrays.fill(slot, 0f);

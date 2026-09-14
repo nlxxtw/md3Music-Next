@@ -51,7 +51,10 @@ class SpectrumArtwork extends StatefulWidget {
   /// 柱状图与曲线共用，由调用方按样式分开记忆后传入。
   final double opacity;
 
-  /// 旋转一圈耗时（默认 8s，慢速防眩晕）
+  /// 是否绘制环形频谱。关闭时仍显示圆形慢转封面（黑胶圆盘观感）。
+  final bool showBars;
+
+  /// 旋转一圈耗时（默认 20s，慢速黑胶感；频谱模式可传更短）
   final Duration rotationDuration;
 
   const SpectrumArtwork({
@@ -64,7 +67,8 @@ class SpectrumArtwork extends StatefulWidget {
     this.bandCount = 40,
     this.style = 0,
     this.opacity = 1.0,
-    this.rotationDuration = const Duration(seconds: 8),
+    this.showBars = true,
+    this.rotationDuration = const Duration(seconds: 20),
   });
 
   @override
@@ -119,6 +123,14 @@ class _SpectrumArtworkState extends State<SpectrumArtwork>
     if (oldWidget.rotationDuration != widget.rotationDuration) {
       _rotationController.duration = widget.rotationDuration;
     }
+    if (oldWidget.showBars != widget.showBars) {
+      if (widget.showBars) {
+        _subscribeSpectrum();
+      } else {
+        _subscription?.cancel();
+        _subscription = null;
+      }
+    }
   }
 
   /// 根据 isPlaying 启停旋转：播放时用 60fps Timer 步进，暂停时停止保持角度。
@@ -147,6 +159,11 @@ class _SpectrumArtworkState extends State<SpectrumArtwork>
 
   /// 订阅 SpectrumService 数据流，做帧间插值（上升快、回落慢）。
   void _subscribeSpectrum() {
+    if (!widget.showBars) {
+      _subscription?.cancel();
+      _subscription = null;
+      return;
+    }
     _subscription?.cancel();
     _subscription = SpectrumService.instance.spectrumStream.listen((bands) {
       if (!mounted) return;
@@ -188,8 +205,8 @@ class _SpectrumArtworkState extends State<SpectrumArtwork>
             : (constraints.maxHeight.isFinite
                   ? constraints.maxHeight
                   : 280.0);
-        // 环形频谱预留外圈空间：柱最大长度 = size × 0.12
-        const barMaxLenRatio = 0.12;
+        // 环形频谱预留外圈空间：柱最大长度 = size × 0.12；纯圆盘模式铺满
+        final barMaxLenRatio = widget.showBars ? 0.12 : 0.0;
         final coverDiameter = size * (1.0 - 2 * barMaxLenRatio);
         final coverRadius = coverDiameter / 2;
         final center = Offset(size / 2, size / 2);
@@ -201,37 +218,38 @@ class _SpectrumArtworkState extends State<SpectrumArtwork>
             clipBehavior: Clip.none,
             children: [
               // ── 1. 环形频谱层（柱状或曲线）：AnimatedOpacity 过渡，播放淡入、暂停淡出 ──
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: AnimatedOpacity(
-                    opacity: widget.isPlaying ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 350),
-                    curve: Curves.easeOut,
-                    child: CustomPaint(
-                      painter: widget.style == 1
-                          ? _SpectrumCurvePainter(
-                              bandsNotifier: _bandsNotifier,
-                              center: center,
-                              coverRadius: coverRadius,
-                              barMaxLen: size * barMaxLenRatio,
-                              color: barColor,
-                              bandCount: widget.bandCount,
-                              opacity: widget.opacity,
-                            )
-                          : _SpectrumRingPainter(
-                              bandsNotifier: _bandsNotifier,
-                              center: center,
-                              coverRadius: coverRadius,
-                              barMaxLen: size * barMaxLenRatio,
-                              color: barColor,
-                              bandCount: widget.bandCount,
-                              opacity: widget.opacity,
-                            ),
+              if (widget.showBars)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: widget.isPlaying ? 1.0 : 0.0,
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeOut,
+                      child: CustomPaint(
+                        painter: widget.style == 1
+                            ? _SpectrumCurvePainter(
+                                bandsNotifier: _bandsNotifier,
+                                center: center,
+                                coverRadius: coverRadius,
+                                barMaxLen: size * barMaxLenRatio,
+                                color: barColor,
+                                bandCount: widget.bandCount,
+                                opacity: widget.opacity,
+                              )
+                            : _SpectrumRingPainter(
+                                bandsNotifier: _bandsNotifier,
+                                center: center,
+                                coverRadius: coverRadius,
+                                barMaxLen: size * barMaxLenRatio,
+                                color: barColor,
+                                bandCount: widget.bandCount,
+                                opacity: widget.opacity,
+                              ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              // ── 2. 圆形旋转封面层 ──
+              // ── 2. 圆形旋转封面层（黑胶圆盘）──
               Positioned(
                 left: center.dx - coverRadius,
                 top: center.dy - coverRadius,
@@ -246,15 +264,27 @@ class _SpectrumArtworkState extends State<SpectrumArtwork>
                       child: child,
                     );
                   },
-                  child: ClipOval(
-                    child: PlayerArtworkImage(
-                      artworkUri: widget.artworkUri,
-                      fallbackFilePath: widget.fallbackFilePath,
-                      fit: BoxFit.cover,
-                      isFill: true,
-                      iconSize: coverDiameter * 0.3,
-                      backgroundColor: cs.surfaceContainerHighest,
-                      iconColor: cs.onSurfaceVariant,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.28),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: PlayerArtworkImage(
+                        artworkUri: widget.artworkUri,
+                        fallbackFilePath: widget.fallbackFilePath,
+                        fit: BoxFit.cover,
+                        isFill: true,
+                        iconSize: coverDiameter * 0.3,
+                        backgroundColor: cs.surfaceContainerHighest,
+                        iconColor: cs.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),

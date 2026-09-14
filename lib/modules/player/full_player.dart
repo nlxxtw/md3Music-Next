@@ -1385,13 +1385,8 @@ class _FullPlayerState extends State<FullPlayer>
                                   onVerticalDragCancel: _onTopBarDragCancel,
                                   child: _wrapArtworkZenPress(
                                     child: AnimatedScale(
-                                      // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                                      scale:
-                                          _spectrumEnabled && _spectrumStyle < 2
-                                          ? 1.0
-                                          : (playerProvider.isPlaying
-                                                ? 1.0
-                                                : 0.85),
+                                      // 圆形慢转封面不需要暂停缩小动画
+                                      scale: 1.0,
                                       duration: const Duration(
                                         milliseconds: 500,
                                       ),
@@ -1574,15 +1569,9 @@ class _FullPlayerState extends State<FullPlayer>
                                     onVerticalDragEnd: _onTopBarDragEnd,
                                     onVerticalDragCancel: _onTopBarDragCancel,
                                     child: _wrapArtworkZenPress(
-                                      child: AnimatedScale(
-                                        // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                                        scale:
-                                            _spectrumEnabled &&
-                                                _spectrumStyle < 2
-                                            ? 1.0
-                                            : (playerProvider.isPlaying
-                                                  ? 1.0
-                                                  : 0.85),
+                                        child: AnimatedScale(
+                                        // 圆形慢转封面不需要暂停缩小动画
+                                        scale: 1.0,
                                         duration: const Duration(
                                           milliseconds: 500,
                                         ),
@@ -1780,28 +1769,22 @@ class _FullPlayerState extends State<FullPlayer>
     double iconSize = 48.0,
     required bool isPlaying,
   }) {
-    // 频谱模式：style 0/1 显示环绕频谱，style 2 用原封面（频谱在背景层）
-    if (_spectrumEnabled && _spectrumStyle < 2) {
-      return SpectrumArtwork(
-        artworkUri: currentSong.artworkUri,
-        fallbackFilePath: currentSong.localPath,
-        isPlaying: isPlaying,
-        bandCount: SpectrumService.instance.bandCount,
-        style: _spectrumStyle,
-        // 柱状图/曲线透明度分开记忆
-        opacity: _spectrumStyle == 1
-            ? _spectrumCurveOpacity
-            : _spectrumBarOpacity,
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: _buildCrossfadeArtwork(
-        currentSong.artworkUri,
-        colorScheme,
-        iconSize: iconSize,
-        fallbackFilePath: currentSong.localPath,
-      ),
+    // 默认圆形慢转黑胶封面；开启频谱且 style 0/1 时叠加环形频谱柱。
+    // style 2 频谱在背景层，封面仍用圆盘慢转。
+    final showBars = _spectrumEnabled && _spectrumStyle < 2;
+    return SpectrumArtwork(
+      artworkUri: currentSong.artworkUri,
+      fallbackFilePath: currentSong.localPath,
+      isPlaying: isPlaying,
+      bandCount: SpectrumService.instance.bandCount,
+      style: _spectrumStyle,
+      opacity: _spectrumStyle == 1
+          ? _spectrumCurveOpacity
+          : _spectrumBarOpacity,
+      showBars: showBars,
+      rotationDuration: showBars
+          ? const Duration(seconds: 8)
+          : const Duration(seconds: 20),
     );
   }
 
@@ -1840,10 +1823,8 @@ class _FullPlayerState extends State<FullPlayer>
                     child: AspectRatio(
                       aspectRatio: 1,
                       child: AnimatedScale(
-                        // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                        scale: _spectrumEnabled && _spectrumStyle < 2
-                            ? 1.0
-                            : (playerProvider.isPlaying ? 1.0 : 0.85),
+                        // 圆形慢转封面不需要暂停缩小动画
+                        scale: 1.0,
                         duration: const Duration(milliseconds: 500),
                         curve: Curves.easeOutBack,
                         child: _buildCrossfadeArtworkWrapper(
@@ -1864,10 +1845,8 @@ class _FullPlayerState extends State<FullPlayer>
               child: AspectRatio(
                 aspectRatio: 1,
                 child: AnimatedScale(
-                  // 频谱模式（style 0/1 圆形旋转封面）不需要封面的放大缩小动画
-                  scale: _spectrumEnabled && _spectrumStyle < 2
-                      ? 1.0
-                      : (playerProvider.isPlaying ? 1.0 : 0.85),
+                  // 圆形慢转封面不需要暂停缩小动画
+                  scale: 1.0,
                   duration: const Duration(milliseconds: 500),
                   curve: Curves.easeOutBack,
                   child: _buildCrossfadeArtworkWrapper(
