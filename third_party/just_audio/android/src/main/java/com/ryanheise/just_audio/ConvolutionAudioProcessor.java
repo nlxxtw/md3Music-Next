@@ -11,8 +11,8 @@ import java.util.Arrays;
 /**
  * Uniformly-partitioned overlap-add FIR convolution for PCM16 streams.
  *
- * <p>Always configured active so enable/disable can toggle without rebuilding the sink.
- * When disabled or no IR is loaded, samples are passed through unchanged.
+ * <p>Supports stereo independent IR and 4-channel binaural matrix:
+ * {@code L' = L*LL + R*RL}, {@code R' = L*LR + R*RR}.
  */
 @UnstableApi
 public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
@@ -22,10 +22,13 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
   private final ConvolutionController controller = ConvolutionController.getInstance();
 
   private int channelCount;
-  private float[][] irPartsL = new float[0][];
-  private float[][] irPartsR = new float[0][];
+  private float[][] irPartsLL = new float[0][];
+  private float[][] irPartsLR = new float[0][];
+  private float[][] irPartsRL = new float[0][];
+  private float[][] irPartsRR = new float[0][];
   private int partCount;
   private int loadedIrLength = -1;
+  private boolean loadedBinaural;
 
   private float[][] xFftRingL = new float[0][];
   private float[][] xFftRingR = new float[0][];
@@ -118,17 +121,17 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       if (idx < 0) {
         idx += partCount;
       }
-      multiplyAccumulate(xFftRingL[idx], irPartsL[p], accL);
-      multiplyAccumulate(xFftRingR[idx], irPartsR[p], accR);
+      // L' = L*LL + R*RL
+      multiplyAccumulate(xFftRingL[idx], irPartsLL[p], accL);
+      multiplyAccumulate(xFftRingR[idx], irPartsRL[p], accL);
+      // R' = L*LR + R*RR
+      multiplyAccumulate(xFftRingL[idx], irPartsLR[p], accR);
+      multiplyAccumulate(xFftRingR[idx], irPartsRR[p], accR);
     }
     ringWrite = (ringWrite + 1) % partCount;
 
     ifftToTime(accL, timeBuf);
-    if (channelCount > 1) {
-      ifftToTime(accR, timeBufR);
-    } else {
-      System.arraycopy(timeBuf, 0, timeBufR, 0, FFT_SIZE);
-    }
+    ifftToTime(accR, timeBufR);
 
     for (int i = 0; i < BLOCK; i++) {
       float wetL = timeBuf[i] + overlapL[i];
@@ -189,8 +192,10 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
   @Override
   protected void onReset() {
     onFlush();
-    irPartsL = new float[0][];
-    irPartsR = new float[0][];
+    irPartsLL = new float[0][];
+    irPartsLR = new float[0][];
+    irPartsRL = new float[0][];
+    irPartsRR = new float[0][];
     xFftRingL = new float[0][];
     xFftRingR = new float[0][];
     partCount = 0;
@@ -199,26 +204,35 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
 
   private void maybeRebuildPartitions() {
     int len = controller.getIrLength();
-    if (len == loadedIrLength && partCount > 0) {
+    boolean binaural = controller.isBinaural();
+    if (len == loadedIrLength && partCount > 0 && binaural == loadedBinaural) {
       return;
     }
-    float[] srcL = controller.getIrL();
-    float[] srcR = controller.getIrR();
-    if (srcL == null || len <= 0) {
-      irPartsL = new float[0][];
-      irPartsR = new float[0][];
+    float[] srcLL = controller.getIrLL();
+    float[] srcLR = controller.getIrLR();
+    float[] srcRL = controller.getIrRL();
+    float[] srcRR = controller.getIrRR();
+    if (srcLL == null || len <= 0) {
+      irPartsLL = new float[0][];
+      irPartsLR = new float[0][];
+      irPartsRL = new float[0][];
+      irPartsRR = new float[0][];
       xFftRingL = new float[0][];
       xFftRingR = new float[0][];
       partCount = 0;
       loadedIrLength = len;
+      loadedBinaural = binaural;
       return;
     }
-    if (srcR == null) {
-      srcR = srcL;
-    }
+    if (srcRR == null) srcRR = srcLL;
+    if (srcLR == null) srcLR = new float[len];
+    if (srcRL == null) srcRL = new float[len];
+
     partCount = (len + BLOCK - 1) / BLOCK;
-    irPartsL = new float[partCount][];
-    irPartsR = new float[partCount][];
+    irPartsLL = new float[partCount][];
+    irPartsLR = new float[partCount][];
+    irPartsRL = new float[partCount][];
+    irPartsRR = new float[partCount][];
     xFftRingL = new float[partCount][];
     xFftRingR = new float[partCount][];
     float[] tmp = new float[BLOCK];
@@ -226,24 +240,28 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       int start = p * BLOCK;
       int n = Math.min(BLOCK, len - start);
 
-      Arrays.fill(tmp, 0f);
-      System.arraycopy(srcL, start, tmp, 0, n);
-      irPartsL[p] = new float[FFT_SIZE * 2];
-      fftRealForward(tmp, irPartsL[p]);
-
-      Arrays.fill(tmp, 0f);
-      System.arraycopy(srcR, start, tmp, 0, n);
-      irPartsR[p] = new float[FFT_SIZE * 2];
-      fftRealForward(tmp, irPartsR[p]);
+      irPartsLL[p] = partitionFft(srcLL, start, n, tmp);
+      irPartsLR[p] = partitionFft(srcLR, start, n, tmp);
+      irPartsRL[p] = partitionFft(srcRL, start, n, tmp);
+      irPartsRR[p] = partitionFft(srcRR, start, n, tmp);
 
       xFftRingL[p] = new float[FFT_SIZE * 2];
       xFftRingR[p] = new float[FFT_SIZE * 2];
     }
     loadedIrLength = len;
+    loadedBinaural = binaural;
     ringWrite = 0;
     Arrays.fill(overlapL, 0f);
     Arrays.fill(overlapR, 0f);
     inFill = 0;
+  }
+
+  private float[] partitionFft(float[] src, int start, int n, float[] tmp) {
+    Arrays.fill(tmp, 0f);
+    System.arraycopy(src, start, tmp, 0, n);
+    float[] out = new float[FFT_SIZE * 2];
+    fftRealForward(tmp, out);
+    return out;
   }
 
   private static void multiplyAccumulate(float[] x, float[] h, float[] acc) {

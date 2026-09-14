@@ -17,7 +17,7 @@ class _SoundsPageState extends State<SoundsPage> {
   String? _tagFilter;
   bool _loading = true;
 
-  static const _tagOrder = ['全部', '杜比', 'SRS', 'DTS', '蝰蛇', '环绕'];
+  static const _tagOrder = ['全部', '8D', '双耳3D', '杜比', 'SRS', 'DTS', '蝰蛇', '环绕'];
 
   @override
   void initState() {
