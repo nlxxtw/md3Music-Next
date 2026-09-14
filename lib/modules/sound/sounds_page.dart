@@ -53,7 +53,7 @@ class _SoundsPageState extends State<SoundsPage> {
     try {
       await _conv.apply(item);
       if (!mounted) return;
-      final orbit = item.tag == '8D' || item.tag == '双耳3D';
+      final orbit = ConvolutionService.isOrbitPreset(item);
       showToast(
         orbit
             ? '已应用「${item.name}」· 360环绕（左右绕转）'
@@ -123,7 +123,7 @@ class _SoundsPageState extends State<SoundsPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '内置 ${_conv.presets.length} 个脉冲 · 8D/双耳3D 为 360 绕转环绕',
+                    '内置 ${_conv.presets.length} 个脉冲 · 8D/双耳3D 舞台近场为 360 绕转',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),
@@ -201,7 +201,7 @@ class _SoundsPageState extends State<SoundsPage> {
             ),
           ),
           title: Text(it.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${it.tag} · ${it.file}'),
+          subtitle: Text(it.tag),
           trailing: applied
               ? FilledButton.tonal(
                   onPressed: _unapply,
@@ -231,10 +231,11 @@ class _SoundsPageState extends State<SoundsPage> {
               Text(it.name, style: Theme.of(ctx).textTheme.titleLarge),
               const SizedBox(height: 8),
               Text('分类：${it.tag}'),
-              Text('文件：${it.file}'),
               const SizedBox(height: 8),
               Text(
-                '通过播放链路内 FIR 卷积加载该脉冲，听感接近蝰蛇/杜比类 IRS 效果（取决于脉冲本身）。',
+                ConvolutionService.isOrbitPreset(it)
+                    ? '360 环绕：声像会缓慢左右绕转（建议戴耳机听）。'
+                    : '通过播放链路内 FIR 卷积加载该脉冲，听感取决于脉冲本身。',
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
               const SizedBox(height: 16),

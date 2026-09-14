@@ -152,8 +152,8 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     float orbitDepth = controller.getOrbitDepth();
     float phaseStep =
         orbit && sampleRate > 0 ? (float) (2.0 * Math.PI * orbitHz / sampleRate) : 0f;
-    // 很短的 Haas（约 0.25ms）：再大容易梳状滤波、发糊
-    int maxItd = Math.max(1, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 4000));
+    // Haas / ITD ≈ 0.6ms：够听出左右绕转，又不至于严重梳状
+    int maxItd = Math.max(2, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 1600));
 
     for (int i = 0; i < BLOCK; i++) {
       float wetL = timeBuf[i] + overlapL[i];
@@ -161,55 +161,65 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       float wetR = timeBufR[i] + overlapR[i];
       overlapR[i] = timeBufR[i + BLOCK];
 
+      // EchoMusic complementary: dry*(1-m)+wet*m — then orbit the sum so dry
+      // cannot freeze the image in the center.
+      float mixL = dry * inBlockL[i] + wet * wetL;
+      float mixR = dry * inBlockR[i] + wet * wetR;
+
       if (orbit) {
         orbitPhase += phaseStep;
         if (orbitPhase > (float) (2.0 * Math.PI)) {
           orbitPhase -= (float) (2.0 * Math.PI);
         }
-        float[] orb = applyOrbit(wetL, wetR, orbitPhase, orbitDepth, maxItd);
-        wetL = orb[0];
-        wetR = orb[1];
+        float[] orb = applyOrbit(mixL, mixR, orbitPhase, orbitDepth, maxItd);
+        mixL = orb[0];
+        mixR = orb[1];
       }
 
-      float outL = softLimit((dry * inBlockL[i] + wet * wetL) * gain);
+      // Stereo-linked soft limit (EchoMusic LinkedLimiter idea)
+      float peak = Math.max(Math.abs(mixL), Math.abs(mixR)) * gain;
+      float scale = peak > 0.95f ? 0.95f / peak : gain;
+      float outL = softLimit(mixL * scale);
       out.putShort(floatToShort(outL));
       if (channelCount > 1) {
-        float outR = softLimit((dry * inBlockR[i] + wet * wetR) * gain);
+        float outR = softLimit(mixR * scale);
         out.putShort(floatToShort(outR));
       }
     }
   }
 
   /**
-   * 轻量 360 环绕：在保留卷积立体声细节的前提下左右摆动。
-   * 旧实现把 wet 压成 mono mid 再 pan，会明显「听不清」。
+   * Classic 8D-style orbit: constant-power pan of mid + short Haas ITD.
+   * depth≈1 → clear L↔R run; side partially kept so it does not turn to mush.
    */
-  private float[] applyOrbit(float wetL, float wetR, float phase, float depth, int maxItd) {
+  private float[] applyOrbit(float inL, float inR, float phase, float depth, int maxItd) {
     float pan = (float) Math.sin(phase); // -1 left … +1 right
     float angle = (pan + 1f) * (float) (Math.PI / 4.0);
     float gL = (float) Math.cos(angle);
     float gR = (float) Math.sin(angle);
+    // Restore center level: at pan=0, gL=gR=√2/2 → *√2 keeps mid unity
+    final float SQRT2 = 1.41421356f;
 
-    // 对湿声做软平衡，而不是 mid 单声道塌缩
-    float amt = depth * 0.85f;
-    float balL = (1f - amt) + amt * gL;
-    float balR = (1f - amt) + amt * gR;
-    float orbL = wetL * balL;
-    float orbR = wetR * balR;
+    float mid = 0.5f * (inL + inR);
+    float side = 0.5f * (inL - inR) * (1f - depth * 0.65f);
+    float orbL = mid * gL * SQRT2 + side;
+    float orbR = mid * gR * SQRT2 - side;
 
-    // 轻微 Haas：只延迟对侧一点点，避免强梳状
-    float mid = 0.5f * (wetL + wetR);
-    int dL = pan > 0.15f ? Math.round(pan * maxItd) : 0;
-    int dR = pan < -0.15f ? Math.round(-pan * maxItd) : 0;
+    float d = depth;
+    orbL = inL * (1f - d) + orbL * d;
+    orbR = inR * (1f - d) + orbR * d;
+
+    int dL = pan > 0.05f ? Math.round(pan * maxItd) : 0;
+    int dR = pan < -0.05f ? Math.round(-pan * maxItd) : 0;
     orbitDelayL[orbitDelayWrite] = mid;
     orbitDelayR[orbitDelayWrite] = mid;
     int idxL = orbitDelayWrite - dL;
     if (idxL < 0) idxL += ORBIT_DELAY_LEN;
     int idxR = orbitDelayWrite - dR;
     if (idxR < 0) idxR += ORBIT_DELAY_LEN;
-    float haasMix = 0.12f * depth;
-    orbL = orbL * (1f - haasMix) + orbitDelayL[idxL] * gL * haasMix;
-    orbR = orbR * (1f - haasMix) + orbitDelayR[idxR] * gR * haasMix;
+    float haasMix = 0.35f * depth;
+    orbL = orbL * (1f - haasMix) + orbitDelayL[idxL] * gL * SQRT2 * haasMix;
+    orbR = orbR * (1f - haasMix) + orbitDelayR[idxR] * gR * SQRT2 * haasMix;
     orbitDelayWrite = (orbitDelayWrite + 1) % ORBIT_DELAY_LEN;
 
     orbitTmp[0] = orbL;

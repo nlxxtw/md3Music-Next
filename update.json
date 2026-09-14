@@ -1,10 +1,10 @@
 {
-  "latestVersion": "13.0.0",
-  "latestBuild": 130,
+  "latestVersion": "13.1.0",
+  "latestBuild": 131,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": false,
   "url": "https://github.com/nlxxtw/md3Music-Next/releases/latest",
   "title": "发现新版本",
-  "message": "有新版本可用，建议更新后继续使用。"
+  "message": "13.1：参考 EchoMusic 修好 8D 左右环绕，并精简音效名称。"
 }

@@ -45,7 +45,7 @@ class ConvolutionService extends ChangeNotifier {
   static const _prefsNameKey = 'conv_applied_name';
   static const _prefsEnabledKey = 'conv_enabled';
   static const _extractMarker = '.zip_ver';
-  static const _extractVer = 'viper_local_v13_clear_orbit';
+  static const _extractVer = 'viper_local_v13_1_echomusic_orbit';
 
   List<LocalSoundPreset> _presets = const [];
   String? _appliedFile;
@@ -60,6 +60,15 @@ class ConvolutionService extends ChangeNotifier {
   bool get enabled => _enabled;
   bool get ready => _ready;
   bool get isSupported => !kIsWeb && Platform.isAndroid;
+
+  /// 与 EchoMusic 静态 IR 不同：这些条目靠运行时 orbit 做左右绕转。
+  static bool isOrbitPreset(LocalSoundPreset preset) {
+    if (preset.tag == '8D') return true;
+    final f = preset.file;
+    return f.startsWith('8D') ||
+        f.startsWith('双耳') ||
+        f.toLowerCase().contains('vox8d');
+  }
 
   Future<void> init() async {
     if (!isSupported) return;
@@ -141,6 +150,48 @@ class ConvolutionService extends ChangeNotifier {
       throw StateError('脉冲文件不存在: $fileName');
     }
     await _channel.invokeMethod('loadPath', {'path': file.absolute.path});
+    await _configureOrbitForFile(fileName);
+  }
+
+  /// Dart 再推一档 orbit/mix，避免只靠文件名在 Java 侧误判。
+  Future<void> _configureOrbitForFile(String fileName) async {
+    LocalSoundPreset? preset;
+    for (final p in _presets) {
+      if (p.file == fileName) {
+        preset = p;
+        break;
+      }
+    }
+    final orbit = preset != null
+        ? isOrbitPreset(preset)
+        : (fileName.startsWith('8D') ||
+            fileName.startsWith('双耳') ||
+            fileName.toLowerCase().contains('vox8d'));
+    if (!orbit) {
+      await _channel.invokeMethod('setOrbit', {
+        'enabled': false,
+        'hz': 0.12,
+        'depth': 0.0,
+      });
+      return;
+    }
+    var hz = 0.13;
+    if (fileName.contains('深空')) {
+      hz = 0.08;
+    } else if (fileName.contains('近场')) {
+      hz = 0.16;
+    } else if (fileName.contains('舞台')) {
+      hz = 0.11;
+    } else if (fileName.contains('宽景')) {
+      hz = 0.14;
+    }
+    // EchoMusic 偏湿；orbit 几乎全湿，位移才听得见
+    await _channel.invokeMethod('setMix', {'wet': 0.92, 'dry': 0.08});
+    await _channel.invokeMethod('setOrbit', {
+      'enabled': true,
+      'hz': hz,
+      'depth': 0.95,
+    });
   }
 
   Future<void> apply(LocalSoundPreset preset) async {

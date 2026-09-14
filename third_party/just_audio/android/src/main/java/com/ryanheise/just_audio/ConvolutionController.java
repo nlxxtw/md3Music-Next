@@ -76,9 +76,15 @@ public final class ConvolutionController {
     this.enabled = enabled;
   }
 
+  /**
+   * EchoMusic-style complementary mix: {@code out = dry*(1-m) + wet*m}.
+   * Prefer passing wet as mix amount; dry is forced to {@code 1-wet} so levels
+   * cannot sum above 1 (independent wet+dry was a clipping / mud source).
+   */
   public void setMix(float wet, float dry) {
-    this.wet = clamp01(wet);
-    this.dry = clamp01(dry);
+    float m = clamp01(wet);
+    this.wet = m;
+    this.dry = clamp01(1f - m);
   }
 
   public void setOutputGain(float gain) {
@@ -258,49 +264,53 @@ public final class ConvolutionController {
     loadedPath = label == null ? "" : label;
     clearRateCache();
 
-    // Safer mix: high wet + dry caused clipping that sounded like noise.
+    // EchoMusic Builtin default is fully wet (mix=1). We keep a little dry for
+    // non-orbit IRs; orbit presets stay mostly wet so L↔R motion is not masked.
     String name = label == null ? "" : label;
     boolean orbitPreset = isOrbitPresetName(name);
     if (orbitPreset) {
-      // 清晰优先：保留足够干声；环绕只做轻量 L/R 摆动，避免糊成一团。
-      wet = 0.55f;
-      dry = 0.55f;
-      outputGain = 0.92f;
-      float hz = 0.08f;
+      wet = 0.92f;
+      dry = 0.08f;
+      outputGain = 0.86f;
+      float hz = 0.13f;
       if (name.contains("深空")) {
-        hz = 0.055f;
+        hz = 0.08f;
       } else if (name.contains("近场")) {
-        hz = 0.10f;
+        hz = 0.16f;
       } else if (name.contains("舞台")) {
-        hz = 0.07f;
-      } else if (name.contains("宽景") || name.contains("8D")) {
-        hz = 0.085f;
+        hz = 0.11f;
+      } else if (name.contains("宽景")) {
+        hz = 0.14f;
       }
       orbitEnabled = true;
       orbitHz = hz;
-      // depth 过深会把卷积结果压成单声道 mid，人声/细节会「听不清」
-      orbitDepth = 0.45f;
+      orbitDepth = 0.95f;
     } else if (binaural) {
-      wet = 0.72f;
-      dry = 0.35f;
+      // Match EchoMusic: trust the 4ch matrix
+      wet = 1.0f;
+      dry = 0.0f;
       outputGain = 0.85f;
       orbitEnabled = false;
     } else {
-      wet = 0.75f;
-      dry = 0.40f;
+      wet = 0.88f;
+      dry = 0.12f;
       outputGain = 0.9f;
       orbitEnabled = false;
     }
   }
 
-  /** 8D / 双耳3D presets get runtime 360 orbit (static IR cannot pan by itself). */
+  /** 8D / 双耳3D / Vox8d — static IR cannot pan; runtime orbit supplies motion. */
   private static boolean isOrbitPresetName(String path) {
     String n = path.replace('\\', '/');
     int slash = n.lastIndexOf('/');
     if (slash >= 0) {
       n = n.substring(slash + 1);
     }
-    return n.startsWith("8D") || n.startsWith("双耳");
+    String lower = n.toLowerCase();
+    return n.startsWith("8D")
+        || n.startsWith("双耳")
+        || lower.contains("vox8d")
+        || n.contains("8D环绕");
   }
 
   private static float[] zerosLike(float[] src) {
