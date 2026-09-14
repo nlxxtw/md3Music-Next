@@ -86,6 +86,7 @@ class _SettingsPageState extends State<SettingsPage>
   bool _isRestarting = false;
   // 诊断日志导出进行中（关于区块显示加载态，防重复点击）
   bool _isExportingLogs = false;
+  bool _isCheckingUpdate = false;
   bool _useDynamicColor = false;
   // 封面动态取色开关（与系统主题色独立、可叠加；开启时封面优先）
   bool _useCoverSeedColor = false;
@@ -2605,13 +2606,19 @@ class _SettingsPageState extends State<SettingsPage>
           subtitle: Text(_appVersion.isEmpty ? kBuildAppVersion : _appVersion),
           leading: const Icon(Icons.info_outline),
         ),
-        // search: 更新
+        // search: 更新 检查更新
         ListTile(
-          title: const Text('更新最新版本'),
-          subtitle: const Text('检查并跳转到更新地址'),
+          title: const Text('检查更新'),
+          subtitle: const Text('拉取远程版本；已是最新会提示，有新版可跳转下载'),
           leading: const Icon(Icons.system_update_outlined),
-          trailing: const Icon(Icons.open_in_new, size: 18),
-          onTap: () => _checkOrOpenUpdate(),
+          trailing: _isCheckingUpdate
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right, size: 18),
+          onTap: _isCheckingUpdate ? null : _checkOrOpenUpdate,
         ),
         // 渲染引擎与版本号同属"当前构建的事实"，故并入版本组：
         // 由构建期 flavor 决定（skia / impeller），运行时不可切换，只读展示。
@@ -2739,18 +2746,37 @@ class _SettingsPageState extends State<SettingsPage>
   }
 
   Future<void> _checkOrOpenUpdate() async {
+    if (_isCheckingUpdate) return;
+    setState(() => _isCheckingUpdate = true);
+    showToast('正在检查更新…');
     try {
       final decision = await AppUpdateService.instance.evaluate();
       if (!mounted) return;
-      if (decision != null && decision.kind != AppUpdateKind.none) {
-        await AppUpdateService.showUpdateDialog(context, decision);
+      if (decision == null) {
+        showToast('检查失败，正在打开下载页…');
+        final ok = await AppUpdateService.instance.openUpdateUrl();
+        if (mounted && !ok) {
+          showToast('无法打开浏览器，请手动访问 GitHub Releases', long: true);
+        }
         return;
       }
-      await AppUpdateService.instance.openUpdateUrl(
-        overrideUrl: decision?.info.url,
-      );
-    } catch (_) {
-      await AppUpdateService.instance.openUpdateUrl();
+      if (decision.kind == AppUpdateKind.none) {
+        showToast(
+          '已是最新版本 ${decision.currentVersion} (${decision.currentBuild})',
+          long: true,
+        );
+        return;
+      }
+      await AppUpdateService.showUpdateDialog(context, decision);
+    } catch (e) {
+      if (!mounted) return;
+      showToast('检查失败：$e，尝试打开下载页…', long: true);
+      final ok = await AppUpdateService.instance.openUpdateUrl();
+      if (mounted && !ok) {
+        showToast('无法打开浏览器，请手动访问 GitHub Releases', long: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isCheckingUpdate = false);
     }
   }
 

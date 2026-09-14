@@ -94,15 +94,24 @@ class AppUpdateService {
     }
   }
 
-  /// 仅打开配置里的跳转地址（设置页「更新最新版本」也可调）。
-  Future<void> openUpdateUrl({String? overrideUrl}) async {
+  /// 打开配置里的跳转地址（设置页「更新最新版本」也可调）。
+  /// 返回是否成功唤起外部浏览器。
+  Future<bool> openUpdateUrl({String? overrideUrl}) async {
     final url = overrideUrl ??
         (await _fetchInfo())?.url ??
         _fallbackUrl;
+    return launchExternalUrl(url);
+  }
+
+  /// 直接尝试打开链接。Android 11+ 上 [canLaunchUrl] 常误报 false，故不作为前置条件。
+  static Future<bool> launchExternalUrl(String url) async {
     final uri = Uri.tryParse(url);
-    if (uri == null) return;
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (uri == null) return false;
+    try {
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e, st) {
+      debugPrint('launchExternalUrl failed: $e\n$st');
+      return false;
     }
   }
 
@@ -217,9 +226,9 @@ class AppUpdateService {
                 ),
               FilledButton(
                 onPressed: () async {
-                  final uri = Uri.tryParse(info.url);
-                  if (uri != null && await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  final ok = await launchExternalUrl(info.url);
+                  if (!ok) {
+                    debugPrint('showUpdateDialog: failed to open ${info.url}');
                   }
                   // 强制更新：跳转后仍留在弹框，避免继续使用旧版
                   if (!force && ctx.mounted) {
