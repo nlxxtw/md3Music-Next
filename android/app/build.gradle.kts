@@ -28,7 +28,7 @@ android {
 
 
     defaultConfig {
-        applicationId = "com.md3music.md3music"
+        applicationId = "com.salt.music"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = flutter.versionCode

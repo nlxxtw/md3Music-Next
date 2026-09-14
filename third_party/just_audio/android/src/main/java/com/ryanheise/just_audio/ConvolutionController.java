@@ -35,7 +35,16 @@ public final class ConvolutionController {
   @Nullable private volatile float[] irRR;
   private volatile int irLength;
   private volatile int irChannels = 1;
+  /** Native sample rate of the loaded IR (Hz). WAV reports this; raw IRS assume 44100. */
+  private volatile int irSampleRate = 44100;
   private volatile String loadedPath = "";
+  /** Cached resampled paths for the last requested playback rate. */
+  private int cachedPlayRate = -1;
+  @Nullable private float[] cachedLL;
+  @Nullable private float[] cachedLR;
+  @Nullable private float[] cachedRL;
+  @Nullable private float[] cachedRR;
+  private int cachedLength;
 
   private ConvolutionController() {}
 
@@ -88,8 +97,48 @@ public final class ConvolutionController {
     return irChannels;
   }
 
+  public int getIrSampleRate() {
+    return irSampleRate;
+  }
+
   public String getLoadedPath() {
     return loadedPath;
+  }
+
+  /**
+   * Returns IR paths resampled to {@code playRateHz}. All four arrays share the same length.
+   * Order: LL, LR, RL, RR.
+   */
+  public synchronized float[][] getPathsForRate(int playRateHz) {
+    if (irLL == null || irLength <= 0) {
+      return new float[0][];
+    }
+    int rate = playRateHz > 0 ? playRateHz : irSampleRate;
+    if (rate == cachedPlayRate && cachedLL != null) {
+      return new float[][] {cachedLL, cachedLR, cachedRL, cachedRR};
+    }
+    float[] ll = irLL;
+    float[] lr = irLR != null ? irLR : zerosLike(irLL);
+    float[] rl = irRL != null ? irRL : zerosLike(irLL);
+    float[] rr = irRR != null ? irRR : irLL;
+    if (rate != irSampleRate && irSampleRate > 0) {
+      ll = resampleLinear(ll, irSampleRate, rate);
+      lr = resampleLinear(lr, irSampleRate, rate);
+      rl = resampleLinear(rl, irSampleRate, rate);
+      rr = resampleLinear(rr, irSampleRate, rate);
+    }
+    cachedPlayRate = rate;
+    cachedLL = ll;
+    cachedLR = lr;
+    cachedRL = rl;
+    cachedRR = rr;
+    cachedLength = ll.length;
+    return new float[][] {ll, lr, rl, rr};
+  }
+
+  public synchronized int getLengthForRate(int playRateHz) {
+    getPathsForRate(playRateHz);
+    return cachedLength;
   }
 
   @Nullable
@@ -131,9 +180,20 @@ public final class ConvolutionController {
     irRR = null;
     irLength = 0;
     irChannels = 1;
+    irSampleRate = 44100;
     binaural = false;
     loadedPath = "";
     enabled = false;
+    clearRateCache();
+  }
+
+  private void clearRateCache() {
+    cachedPlayRate = -1;
+    cachedLL = null;
+    cachedLR = null;
+    cachedRL = null;
+    cachedRR = null;
+    cachedLength = 0;
   }
 
   public synchronized void loadFromFile(String path) throws IOException {
@@ -152,10 +212,8 @@ public final class ConvolutionController {
     } else {
       parsed = parseRawIrs(data);
     }
-    normalizePeak(parsed.ll, 0.92f);
-    if (parsed.lr != null) normalizePeak(parsed.lr, 0.92f);
-    if (parsed.rl != null) normalizePeak(parsed.rl, 0.92f);
-    if (parsed.rr != null) normalizePeak(parsed.rr, 0.92f);
+    // Joint peak across all paths — per-channel normalize destroys ILD / surround cues.
+    normalizeJointPeak(parsed.ll, parsed.lr, parsed.rl, parsed.rr, 0.85f);
 
     irLL = parsed.ll;
     irLR = parsed.lr;
@@ -168,16 +226,20 @@ public final class ConvolutionController {
     }
     irLength = parsed.ll.length;
     irChannels = parsed.channels;
+    irSampleRate = parsed.sampleRate > 0 ? parsed.sampleRate : 44100;
     binaural = parsed.binaural;
     loadedPath = label == null ? "" : label;
+    clearRateCache();
 
-    // Binaural spatial IRs benefit from a wetter default mix.
+    // Safer mix: high wet + dry caused clipping that sounded like noise.
     if (binaural) {
-      wet = 0.92f;
-      dry = 0.28f;
+      wet = 0.62f;
+      dry = 0.55f;
+      outputGain = 0.85f;
     } else {
-      wet = 0.85f;
-      dry = 0.35f;
+      wet = 0.75f;
+      dry = 0.40f;
+      outputGain = 0.9f;
     }
   }
 
@@ -192,6 +254,7 @@ public final class ConvolutionController {
     @Nullable final float[] rr;
     final int channels;
     final boolean binaural;
+    final int sampleRate;
 
     ParsedIr(
         float[] ll,
@@ -199,13 +262,15 @@ public final class ConvolutionController {
         @Nullable float[] rl,
         @Nullable float[] rr,
         int channels,
-        boolean binaural) {
+        boolean binaural,
+        int sampleRate) {
       this.ll = ll;
       this.lr = lr;
       this.rl = rl;
       this.rr = rr;
       this.channels = channels;
       this.binaural = binaural;
+      this.sampleRate = sampleRate;
     }
   }
 
@@ -218,6 +283,7 @@ public final class ConvolutionController {
     }
     short audioFormat = -1;
     short channels = 1;
+    int sampleRate = 44100;
     short bitsPerSample = 16;
     byte[] pcm = null;
     while (buf.remaining() >= 8) {
@@ -230,7 +296,7 @@ public final class ConvolutionController {
       if (chunkId == 0x20746d66) { // fmt
         audioFormat = buf.getShort();
         channels = buf.getShort();
-        buf.getInt(); // sample rate
+        sampleRate = buf.getInt();
         buf.getInt(); // byte rate
         buf.getShort(); // block align
         bitsPerSample = buf.getShort();
@@ -246,7 +312,7 @@ public final class ConvolutionController {
     if (audioFormat != 1 && audioFormat != 3) {
       throw new IllegalArgumentException("unsupported WAVE format " + audioFormat);
     }
-    return decodePcm(pcm, channels, bitsPerSample, audioFormat == 3);
+    return decodePcm(pcm, channels, bitsPerSample, audioFormat == 3, sampleRate);
   }
 
   private static ParsedIr parseRawIrs(byte[] data) {
@@ -255,11 +321,12 @@ public final class ConvolutionController {
       data = Arrays.copyOf(data, data.length - 1);
     }
     short channels = (short) (stereo ? 2 : 1);
-    return decodePcm(data, channels, (short) 16, false);
+    // Viper IRS are typically 44100.
+    return decodePcm(data, channels, (short) 16, false, 44100);
   }
 
   private static ParsedIr decodePcm(
-      byte[] pcm, short channels, short bitsPerSample, boolean ieeeFloat) {
+      byte[] pcm, short channels, short bitsPerSample, boolean ieeeFloat, int sampleRate) {
     int bytesPerSample = bitsPerSample / 8;
     int frameBytes = channels * bytesPerSample;
     if (frameBytes <= 0 || pcm.length < frameBytes) {
@@ -309,7 +376,8 @@ public final class ConvolutionController {
     }
 
     int storedChannels = binaural ? 4 : (channels >= 2 ? 2 : 1);
-    return new ParsedIr(ll, lr, rl, rr, storedChannels, binaural);
+    int rate = sampleRate > 0 ? sampleRate : 44100;
+    return new ParsedIr(ll, lr, rl, rr, storedChannels, binaural, rate);
   }
 
   private static float readSample(ByteBuffer buf, short bitsPerSample, boolean ieeeFloat) {
@@ -351,18 +419,69 @@ public final class ConvolutionController {
     return Math.max(16, end + 1);
   }
 
-  private static void normalizePeak(float[] ir, float targetPeak) {
-    float peak = 0f;
-    for (float v : ir) {
-      peak = Math.max(peak, Math.abs(v));
-    }
+  private static void normalizeJointPeak(
+      float[] ll,
+      @Nullable float[] lr,
+      @Nullable float[] rl,
+      @Nullable float[] rr,
+      float targetPeak) {
+    float peak = peakOf(ll);
+    if (lr != null) peak = Math.max(peak, peakOf(lr));
+    if (rl != null) peak = Math.max(peak, peakOf(rl));
+    if (rr != null) peak = Math.max(peak, peakOf(rr));
     if (peak < 1e-6f) {
       return;
     }
     float scale = targetPeak / peak;
+    scaleInPlace(ll, scale);
+    if (lr != null) scaleInPlace(lr, scale);
+    if (rl != null) scaleInPlace(rl, scale);
+    if (rr != null) scaleInPlace(rr, scale);
+  }
+
+  private static float peakOf(float[] ir) {
+    float peak = 0f;
+    for (float v : ir) {
+      peak = Math.max(peak, Math.abs(v));
+    }
+    return peak;
+  }
+
+  private static void scaleInPlace(float[] ir, float scale) {
     for (int i = 0; i < ir.length; i++) {
       ir[i] *= scale;
     }
+  }
+
+  /** Linear resample from {@code srcRate} to {@code dstRate}. */
+  private static float[] resampleLinear(float[] src, int srcRate, int dstRate) {
+    if (srcRate <= 0 || dstRate <= 0 || srcRate == dstRate || src.length == 0) {
+      return Arrays.copyOf(src, src.length);
+    }
+    int outLen = Math.max(1, (int) Math.round(src.length * (double) dstRate / (double) srcRate));
+    outLen = Math.min(outLen, MAX_IR_SAMPLES);
+    float[] out = new float[outLen];
+    double ratio = (double) srcRate / (double) dstRate;
+    for (int i = 0; i < outLen; i++) {
+      double pos = i * ratio;
+      int i0 = (int) pos;
+      int i1 = Math.min(i0 + 1, src.length - 1);
+      float frac = (float) (pos - i0);
+      if (i0 >= src.length) {
+        out[i] = src[src.length - 1];
+      } else {
+        out[i] = src[i0] * (1f - frac) + src[i1] * frac;
+      }
+    }
+    return out;
+  }
+
+  private static void normalizePeak(float[] ir, float targetPeak) {
+    float peak = peakOf(ir);
+    if (peak < 1e-6f) {
+      return;
+    }
+    scaleInPlace(ir, targetPeak / peak);
   }
 
   private static byte[] readAll(File file) throws IOException {

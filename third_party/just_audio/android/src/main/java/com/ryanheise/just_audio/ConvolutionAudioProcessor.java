@@ -22,12 +22,14 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
   private final ConvolutionController controller = ConvolutionController.getInstance();
 
   private int channelCount;
+  private int sampleRate = 44100;
   private float[][] irPartsLL = new float[0][];
   private float[][] irPartsLR = new float[0][];
   private float[][] irPartsRL = new float[0][];
   private float[][] irPartsRR = new float[0][];
   private int partCount;
   private int loadedIrLength = -1;
+  private int loadedPlayRate = -1;
   private boolean loadedBinaural;
 
   private float[][] xFftRingL = new float[0][];
@@ -57,6 +59,10 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       throw new UnhandledAudioFormatException(inputAudioFormat);
     }
     channelCount = inputAudioFormat.channelCount;
+    sampleRate = inputAudioFormat.sampleRate > 0 ? inputAudioFormat.sampleRate : 44100;
+    // Force partition rebuild when sample rate changes (IR must be resampled).
+    loadedIrLength = -1;
+    loadedPlayRate = -1;
     return inputAudioFormat;
   }
 
@@ -136,13 +142,13 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     for (int i = 0; i < BLOCK; i++) {
       float wetL = timeBuf[i] + overlapL[i];
       overlapL[i] = timeBuf[i + BLOCK];
-      float outL = (dry * inBlockL[i] + wet * wetL) * gain;
-      out.putShort(clampToShort(outL));
+      float outL = softLimit((dry * inBlockL[i] + wet * wetL) * gain);
+      out.putShort(floatToShort(outL));
       if (channelCount > 1) {
         float wetR = timeBufR[i] + overlapR[i];
         overlapR[i] = timeBufR[i + BLOCK];
-        float outR = (dry * inBlockR[i] + wet * wetR) * gain;
-        out.putShort(clampToShort(outR));
+        float outR = softLimit((dry * inBlockR[i] + wet * wetR) * gain);
+        out.putShort(floatToShort(outR));
       }
     }
   }
@@ -200,19 +206,20 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     xFftRingR = new float[0][];
     partCount = 0;
     loadedIrLength = -1;
+    loadedPlayRate = -1;
   }
 
   private void maybeRebuildPartitions() {
-    int len = controller.getIrLength();
+    int nativeLen = controller.getIrLength();
     boolean binaural = controller.isBinaural();
-    if (len == loadedIrLength && partCount > 0 && binaural == loadedBinaural) {
+    if (nativeLen == loadedIrLength
+        && partCount > 0
+        && binaural == loadedBinaural
+        && sampleRate == loadedPlayRate) {
       return;
     }
-    float[] srcLL = controller.getIrLL();
-    float[] srcLR = controller.getIrLR();
-    float[] srcRL = controller.getIrRL();
-    float[] srcRR = controller.getIrRR();
-    if (srcLL == null || len <= 0) {
+    float[][] paths = controller.getPathsForRate(sampleRate);
+    if (paths.length < 4 || nativeLen <= 0) {
       irPartsLL = new float[0][];
       irPartsLR = new float[0][];
       irPartsRL = new float[0][];
@@ -220,13 +227,16 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       xFftRingL = new float[0][];
       xFftRingR = new float[0][];
       partCount = 0;
-      loadedIrLength = len;
+      loadedIrLength = nativeLen;
+      loadedPlayRate = sampleRate;
       loadedBinaural = binaural;
       return;
     }
-    if (srcRR == null) srcRR = srcLL;
-    if (srcLR == null) srcLR = new float[len];
-    if (srcRL == null) srcRL = new float[len];
+    float[] srcLL = paths[0];
+    float[] srcLR = paths[1];
+    float[] srcRL = paths[2];
+    float[] srcRR = paths[3];
+    int len = srcLL.length;
 
     partCount = (len + BLOCK - 1) / BLOCK;
     irPartsLL = new float[partCount][];
@@ -248,7 +258,8 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       xFftRingL[p] = new float[FFT_SIZE * 2];
       xFftRingR[p] = new float[FFT_SIZE * 2];
     }
-    loadedIrLength = len;
+    loadedIrLength = nativeLen;
+    loadedPlayRate = sampleRate;
     loadedBinaural = binaural;
     ringWrite = 0;
     Arrays.fill(overlapL, 0f);
@@ -345,7 +356,18 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     }
   }
 
-  private static short clampToShort(float v) {
+  /** Soft knee limiter — hard clip was the main "杂音" source when wet+dry peaked. */
+  private static float softLimit(float v) {
+    if (v > 0.9f) {
+      return 0.9f + 0.1f * (float) Math.tanh((v - 0.9f) / 0.1f);
+    }
+    if (v < -0.9f) {
+      return -0.9f + 0.1f * (float) Math.tanh((v + 0.9f) / 0.1f);
+    }
+    return v;
+  }
+
+  private static short floatToShort(float v) {
     if (v > 1f) v = 1f;
     if (v < -1f) v = -1f;
     return (short) Math.round(v * 32767f);
