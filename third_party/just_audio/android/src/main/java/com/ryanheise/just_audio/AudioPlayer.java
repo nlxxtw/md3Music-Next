@@ -127,6 +127,12 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
 
     private ExoPlayer player;
     private volatile long latestExternalMetadataGeneration;
+    /** 真实歌名/歌手（原子岛歌词覆盖 artist 时仍保留，供恢复）。 */
+    private volatile String sessionStableTitle = "";
+    private volatile String sessionStableArtist = "";
+    /** 非空时：MediaSession.artist/subtitle 显示当前歌词行（锁屏/原子岛可读）。 */
+    private volatile String sessionLyricLine = "";
+
     // MD3Music fork: 音量均衡（响度归一）增益装饰器。在 buildAudioSink 时创建，
     // 通过 setNormalizationGain(gainDb) 对当前曲目设固定线性增益（可放大/衰减）。
     private NormalizationGainAudioSink normalizationGainSink;
@@ -1294,6 +1300,74 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
     }
 
+    /**
+     * 把当前歌词行写进 MediaSession（artist + subtitle），供锁屏 / HyperOS 原子岛显示。
+     * 通知栏仍走 NotificationLyricStore 卡拉 OK；此处只推纯文本，且应在换行时调用。
+     */
+    public static void updateActiveSessionLyricLine(String lyricLine) {
+        AudioPlayer p = sActivePlayer;
+        if (p != null) {
+            p.applySessionLyricLine(lyricLine);
+        }
+    }
+
+    private void applySessionLyricLine(final String lyricLine) {
+        try {
+            final androidx.media3.common.Player p = player;
+            if (p == null) return;
+            Handler handler = new Handler(p.getApplicationLooper());
+            handler.post(() -> doApplySessionLyricLine(lyricLine));
+        } catch (Exception e) {
+            Log.w("AudioFocusFork", "applySessionLyricLine dispatch failed: " + e);
+        }
+    }
+
+    private void doApplySessionLyricLine(String lyricLine) {
+        try {
+            String next = lyricLine == null ? "" : lyricLine.trim();
+            if (equalsOrBothNull(
+                    sessionLyricLine.isEmpty() ? null : sessionLyricLine,
+                    next.isEmpty() ? null : next)) {
+                return;
+            }
+            sessionLyricLine = next;
+            MediaItem cur = player.getCurrentMediaItem();
+            if (cur == null) return;
+            MediaMetadata.Builder mb = cur.mediaMetadata.buildUpon();
+            paintSessionIdentity(mb);
+            player.replaceMediaItem(
+                    player.getCurrentMediaItemIndex(),
+                    cur.buildUpon().setMediaMetadata(mb.build()).build());
+        } catch (Exception e) {
+            Log.w("AudioFocusFork", "doApplySessionLyricLine failed: " + e);
+        }
+    }
+
+    /** title 用稳定歌名；有歌词行时 artist/subtitle 显示歌词，否则显示真实歌手。 */
+    private void paintSessionIdentity(MediaMetadata.Builder mb) {
+        if (sessionStableTitle != null && !sessionStableTitle.isEmpty()) {
+            mb.setTitle(sessionStableTitle);
+        }
+        if (sessionLyricLine != null && !sessionLyricLine.isEmpty()) {
+            mb.setArtist(sessionLyricLine);
+            mb.setSubtitle(sessionLyricLine);
+        } else {
+            if (sessionStableArtist != null && !sessionStableArtist.isEmpty()) {
+                mb.setArtist(sessionStableArtist);
+            }
+            mb.setSubtitle((CharSequence) null);
+        }
+    }
+
+    private void rememberStableIdentity(String title, String artist) {
+        if (title != null && !title.isEmpty()) {
+            sessionStableTitle = title;
+        }
+        if (artist != null && !artist.isEmpty()) {
+            sessionStableArtist = artist;
+        }
+    }
+
     /// 写媒体3 MediaItem 的 MediaMetadata（标题/艺术家/内嵌封面位图）。
     /// 位图转 JPEG 字节经 setArtworkData 下发，使其成为系统 MEDIA_KEY_ART；异常静默。
     /// ExoPlayer 必须在创建它的 Looper 线程访问，因此先派发到 player 所在线程执行。
@@ -1346,13 +1420,25 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 logDiscardedIdentity("title/artist", cur, expectedMediaId);
                 return;
             }
+            rememberStableIdentity(title, artist);
             MediaMetadata m = cur.mediaMetadata;
             String curTitle = m.title != null ? m.title.toString() : null;
+            String wantTitle = sessionStableTitle;
+            String wantArtist = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
+                    ? sessionLyricLine
+                    : sessionStableArtist;
             String curArtist = m.artist != null ? m.artist.toString() : null;
-            if (equalsOrBothNull(curTitle, title) && equalsOrBothNull(curArtist, artist)) return;
+            String curSub = m.subtitle != null ? m.subtitle.toString() : null;
+            String wantSub = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
+                    ? sessionLyricLine
+                    : null;
+            if (equalsOrBothNull(curTitle, wantTitle)
+                    && equalsOrBothNull(curArtist, wantArtist)
+                    && equalsOrBothNull(curSub, wantSub)) {
+                return;
+            }
             MediaMetadata.Builder mb = m.buildUpon();
-            if (title != null && !title.isEmpty()) mb.setTitle(title);
-            if (artist != null && !artist.isEmpty()) mb.setArtist(artist);
+            paintSessionIdentity(mb);
             player.replaceMediaItem(
                     player.getCurrentMediaItemIndex(),
                     cur.buildUpon().setMediaMetadata(mb.build()).build());
@@ -1376,7 +1462,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         return generation <= 0 || generation == latestExternalMetadataGeneration;
     }
 
-    private static boolean matchesExpectedMediaItem(
+    private boolean matchesExpectedMediaItem(
             MediaItem item, String expectedMediaId, String expectedTitle, String expectedArtist) {
         if (expectedMediaId == null || expectedMediaId.isEmpty()
                 || expectedMediaId.equals(item.mediaId)) {
@@ -1392,12 +1478,16 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             // writes it for the first time. Generation ownership above still rejects old songs.
             return true;
         }
-        return expectedTitle != null
-                && !expectedTitle.isEmpty()
-                && expectedTitle.equals(currentTitle)
-                && (expectedArtist == null
-                        || expectedArtist.isEmpty()
-                        || expectedArtist.equals(currentArtist));
+        if (expectedTitle == null || expectedTitle.isEmpty() || !expectedTitle.equals(currentTitle)) {
+            return false;
+        }
+        // 原子岛歌词覆盖 artist 时，用稳定歌手或当前歌词行匹配，避免误丢元数据刷新
+        if (expectedArtist == null || expectedArtist.isEmpty()) return true;
+        if (expectedArtist.equals(currentArtist)) return true;
+        if (expectedArtist.equals(sessionStableArtist)) return true;
+        return sessionLyricLine != null
+                && !sessionLyricLine.isEmpty()
+                && sessionLyricLine.equals(currentArtist);
     }
 
     private static void logDiscardedIdentity(
@@ -1579,23 +1669,33 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 logDiscardedIdentity("lyricInfo", cur, expectedMediaId);
                 return;
             }
+            rememberStableIdentity(title, artist);
             MediaMetadata m = cur.mediaMetadata;
             String curTitle = m.title != null ? m.title.toString() : null;
             String curArtist = m.artist != null ? m.artist.toString() : null;
+            String curSub = m.subtitle != null ? m.subtitle.toString() : null;
             android.os.Bundle currentExtras = m.extras;
             String currentLyric = currentExtras != null
                     ? currentExtras.getString(SESSION_LYRIC_INFO_KEY) : null;
             String incomingLyric = (lyricInfo == null || lyricInfo.isEmpty()) ? null : lyricInfo;
 
+            String wantArtist = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
+                    ? sessionLyricLine
+                    : sessionStableArtist;
+            String wantSub = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
+                    ? sessionLyricLine
+                    : null;
+
             boolean titleChanged =
-                    !(equalsOrBothNull(curTitle, title) && equalsOrBothNull(curArtist, artist));
+                    !(equalsOrBothNull(curTitle, sessionStableTitle)
+                            && equalsOrBothNull(curArtist, wantArtist)
+                            && equalsOrBothNull(curSub, wantSub));
             boolean lyricChanged = !((incomingLyric == null && currentLyric == null)
                     || (incomingLyric != null && incomingLyric.equals(currentLyric)));
             if (!titleChanged && !lyricChanged) return;
 
             MediaMetadata.Builder mb = m.buildUpon();
-            if (title != null && !title.isEmpty()) mb.setTitle(title);
-            if (artist != null && !artist.isEmpty()) mb.setArtist(artist);
+            paintSessionIdentity(mb);
             android.os.Bundle newExtras = currentExtras != null
                     ? new android.os.Bundle(currentExtras)
                     : new android.os.Bundle();
@@ -1633,9 +1733,9 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 return;
             }
             int index = player.getCurrentMediaItemIndex();
+            rememberStableIdentity(title, artist);
             MediaMetadata.Builder mb = cur.mediaMetadata.buildUpon();
-            if (title != null && !title.isEmpty()) mb.setTitle(title);
-            if (artist != null && !artist.isEmpty()) mb.setArtist(artist);
+            paintSessionIdentity(mb);
             // MD3Music fork：注入 artworkUri（Lyricon autoSync / 外部读取封面用），
             // 通知栏封面仍用 artworkData（bitmap，稳定，避免 artUri 异步加载闪烁）。
             if (artUri != null && !artUri.isEmpty()) {

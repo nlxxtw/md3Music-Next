@@ -45,7 +45,7 @@ class ConvolutionService extends ChangeNotifier {
   static const _prefsNameKey = 'conv_applied_name';
   static const _prefsEnabledKey = 'conv_enabled';
   static const _extractMarker = '.zip_ver';
-  static const _extractVer = 'viper_local_v13_1_echomusic_orbit';
+  static const _extractVer = 'viper_local_v13_2_select_island_lyric';
 
   List<LocalSoundPreset> _presets = const [];
   String? _appliedFile;

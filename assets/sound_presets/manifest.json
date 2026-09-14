@@ -32,153 +32,153 @@
     "file": "3D Headphone HD - Profile 1.irs",
     "name": "3D Headphone HD 1",
     "fullName": "3D Headphone HD 1",
-    "tag": "双耳3D"
+    "tag": "环绕"
   },
   {
     "id": 6,
     "file": "3D立体感音效低音炮版.irs",
     "name": "3D 低音炮",
     "fullName": "3D 低音炮",
-    "tag": "双耳3D"
+    "tag": "环绕"
   },
   {
     "id": 7,
     "file": "3D耳机 HD - 预设2.irs",
     "name": "3D 耳机 HD 2",
     "fullName": "3D 耳机 HD 2",
-    "tag": "双耳3D"
+    "tag": "环绕"
   },
   {
     "id": 8,
     "file": "Archy@四相空间演唱会4~1全景环绕 - 4声道脉冲.irs",
-    "name": "四相空间演唱会 1",
-    "fullName": "四相空间演唱会 1",
+    "name": "Archy@四相空间演唱会4~1全景环绕 - 4声道脉冲",
+    "fullName": "Archy@四相空间演唱会4~1全景环绕 - 4声道脉冲",
     "tag": "环绕"
   },
   {
     "id": 9,
     "file": "Archy@四相空间演唱会4~2全景环绕 - 4声道脉冲.irs",
-    "name": "四相空间演唱会 2",
-    "fullName": "四相空间演唱会 2",
+    "name": "Archy@四相空间演唱会4~2全景环绕 - 4声道脉冲",
+    "fullName": "Archy@四相空间演唱会4~2全景环绕 - 4声道脉冲",
     "tag": "环绕"
   },
   {
     "id": 10,
     "file": "Archy扬声器外放Surround+equilibrium 01-64kHz.irs",
-    "name": "iSurround 外放",
-    "fullName": "iSurround 外放",
+    "name": "Archy扬声器外放Surround+equilibrium 01-64kHz",
+    "fullName": "Archy扬声器外放Surround+equilibrium 01-64kHz",
     "tag": "环绕"
   },
   {
     "id": 11,
     "file": "Archy｛iSurround+equilibrium｝01-耳机64kHz.irs",
-    "name": "iSurround 耳机 1",
-    "fullName": "iSurround 耳机 1",
+    "name": "ArchyiSurround+equilibrium01-耳机64kHz",
+    "fullName": "ArchyiSurround+equilibrium01-耳机64kHz",
     "tag": "环绕"
   },
   {
     "id": 12,
     "file": "Archy｛iSurround+equilibrium｝02-耳机64kHz.irs",
-    "name": "iSurround 耳机 2",
-    "fullName": "iSurround 耳机 2",
+    "name": "ArchyiSurround+equilibrium02-耳机64kHz",
+    "fullName": "ArchyiSurround+equilibrium02-耳机64kHz",
     "tag": "环绕"
   },
   {
     "id": 13,
     "file": "Atmos DAP65 surround 44100.irs",
-    "name": "Atmos DAP65 44.1k",
-    "fullName": "Atmos DAP65 44.1k",
+    "name": "Atmos DAP65 surround 44100",
+    "fullName": "Atmos DAP65 surround 44100",
     "tag": "杜比"
   },
   {
     "id": 14,
     "file": "Atmos DAP65 surround 48000-padded--clean & cool_041016105841.irs",
-    "name": "Atmos DAP65 Clean",
-    "fullName": "Atmos DAP65 Clean",
+    "name": "Atmos DAP65 surround 48000-padded--clean & cool_041016105841",
+    "fullName": "Atmos DAP65 surround 48000-padded--clean & cool_041016105841",
     "tag": "杜比"
   },
   {
     "id": 15,
     "file": "Atmos DAP65 surround 48000.irs",
-    "name": "Atmos DAP65 48k",
-    "fullName": "Atmos DAP65 48k",
+    "name": "Atmos DAP65 surround 48000",
+    "fullName": "Atmos DAP65 surround 48000",
     "tag": "杜比"
   },
   {
     "id": 16,
     "file": "Clear Surround Wide Mode.irs",
-    "name": "Clear Surround Wide",
-    "fullName": "Clear Surround Wide",
+    "name": "Clear Surround Wide Mode",
+    "fullName": "Clear Surround Wide Mode",
     "tag": "环绕"
   },
   {
     "id": 17,
     "file": "Creative CMSS 3D Max.irs",
-    "name": "Creative CMSS 3D",
-    "fullName": "Creative CMSS 3D",
-    "tag": "双耳3D"
+    "name": "Creative CMSS 3D Max",
+    "fullName": "Creative CMSS 3D Max",
+    "tag": "环绕"
   },
   {
     "id": 18,
     "file": "Dolby Digital Plus - Surround Left.irs",
-    "name": "Dolby Digital Plus 左环绕",
-    "fullName": "Dolby Digital Plus 左环绕",
+    "name": "Dolby Digital Plus - Surround Left",
+    "fullName": "Dolby Digital Plus - Surround Left",
     "tag": "杜比"
   },
   {
     "id": 19,
     "file": "Dolby Digital Plus - Surround Right.irs",
-    "name": "Dolby Digital Plus 右环绕",
-    "fullName": "Dolby Digital Plus 右环绕",
+    "name": "Dolby Digital Plus - Surround Right",
+    "fullName": "Dolby Digital Plus - Surround Right",
     "tag": "杜比"
   },
   {
     "id": 20,
     "file": "Dolby Headphone Cinema 1.irs",
-    "name": "Dolby Headphone 影院",
-    "fullName": "Dolby Headphone 影院",
-    "tag": "双耳3D"
+    "name": "Dolby Headphone Cinema 1",
+    "fullName": "Dolby Headphone Cinema 1",
+    "tag": "杜比"
   },
   {
     "id": 21,
     "file": "Dolby Surround & Pro Logic & LFE normal,_031016125645.irs",
-    "name": "Dolby Pro Logic LFE",
-    "fullName": "Dolby Pro Logic LFE",
+    "name": "Dolby Surround & Pro Logic & LFE normal,_031016125645",
+    "fullName": "Dolby Surround & Pro Logic & LFE normal,_031016125645",
     "tag": "杜比"
   },
   {
     "id": 22,
     "file": "Dolby Surround & Pro Logic & LFE volume-match_031016134437.irs",
-    "name": "Dolby Pro Logic 响度匹配",
-    "fullName": "Dolby Pro Logic 响度匹配",
+    "name": "Dolby Surround & Pro Logic & LFE volume-match_031016134437",
+    "fullName": "Dolby Surround & Pro Logic & LFE volume-match_031016134437",
     "tag": "杜比"
   },
   {
     "id": 23,
     "file": "Dolby Surround & Pro Logic & LFE.irs",
-    "name": "Dolby Pro Logic",
-    "fullName": "Dolby Pro Logic",
+    "name": "Dolby Surround & Pro Logic & LFE",
+    "fullName": "Dolby Surround & Pro Logic & LFE",
     "tag": "杜比"
   },
   {
     "id": 24,
     "file": "Dolby Surround Pro Logic.irs",
-    "name": "Dolby Surround",
-    "fullName": "Dolby Surround",
+    "name": "Dolby Surround Pro Logic",
+    "fullName": "Dolby Surround Pro Logic",
     "tag": "杜比"
   },
   {
     "id": 25,
     "file": "DTS耳机_X - 宽广声场.irs",
-    "name": "DTS Headphone:X",
-    "fullName": "DTS Headphone:X",
+    "name": "DTS耳机_X - 宽广声场",
+    "fullName": "DTS耳机_X - 宽广声场",
     "tag": "DTS"
   },
   {
     "id": 26,
     "file": "DTS音效32bit+环绕.irs",
-    "name": "DTS 环绕",
-    "fullName": "DTS 环绕",
+    "name": "DTS音效32bit+环绕",
+    "fullName": "DTS音效32bit+环绕",
     "tag": "DTS"
   },
   {
@@ -191,15 +191,15 @@
   {
     "id": 28,
     "file": "EzRlon-Super Sound  〔QQ音乐〕全景环绕「音效移植_.irs",
-    "name": "QQ 全景环绕",
-    "fullName": "QQ 全景环绕",
+    "name": "Super Sound QQ音乐全景环绕",
+    "fullName": "Super Sound QQ音乐全景环绕",
     "tag": "环绕"
   },
   {
     "id": 29,
     "file": "EzRlon-〔酷狗3D丽音〕 「音效移植」［重制版］.irs",
-    "name": "酷狗 3D丽音（重制）",
-    "fullName": "酷狗 3D丽音（重制）",
+    "name": "酷狗3D丽音",
+    "fullName": "酷狗3D丽音",
     "tag": "双耳3D"
   },
   {
@@ -212,15 +212,15 @@
   {
     "id": 31,
     "file": "EzRlon-格莱美「音效移植2_.irs",
-    "name": "格莱美 移植 2",
-    "fullName": "格莱美 移植 2",
+    "name": "格莱美2",
+    "fullName": "格莱美2",
     "tag": "环绕"
   },
   {
     "id": 32,
     "file": "EzRlon-格莱美「音效移植_.irs",
-    "name": "格莱美 移植 1",
-    "fullName": "格莱美 移植 1",
+    "name": "格莱美",
+    "fullName": "格莱美",
     "tag": "环绕"
   },
   {
@@ -233,113 +233,372 @@
   {
     "id": 34,
     "file": "EzRlon-酷狗-3D丽音[移植音效].irs",
-    "name": "酷狗 3D丽音",
-    "fullName": "酷狗 3D丽音",
+    "name": "酷狗-3D丽音",
+    "fullName": "酷狗-3D丽音",
     "tag": "双耳3D"
   },
   {
     "id": 35,
     "file": "EzRlon-酷狗-HIFI现场[移植音效].irs",
-    "name": "酷狗 HiFi现场",
-    "fullName": "酷狗 HiFi现场",
-    "tag": "环绕"
+    "name": "酷狗-HIFI现场",
+    "fullName": "酷狗-HIFI现场",
+    "tag": "酷狗"
   },
   {
     "id": 36,
     "file": "EzRlon-酷狗-纯净人声[移植音效].irs",
-    "name": "酷狗 纯净人声",
-    "fullName": "酷狗 纯净人声",
-    "tag": "环绕"
+    "name": "酷狗-纯净人声",
+    "fullName": "酷狗-纯净人声",
+    "tag": "酷狗"
   },
   {
     "id": 37,
     "file": "EzRlon-酷狗-超重低音[移植音效].irs",
-    "name": "酷狗 超重低音",
-    "fullName": "酷狗 超重低音",
-    "tag": "环绕"
+    "name": "酷狗-超重低音",
+    "fullName": "酷狗-超重低音",
+    "tag": "酷狗"
   },
   {
     "id": 38,
-    "file": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0.irs",
-    "name": "耳机3D 广域",
-    "fullName": "耳机3D 广域",
-    "tag": "双耳3D"
+    "file": "HIFI实验（高级）2-13b3.irs",
+    "name": "HiFi 实验高级",
+    "fullName": "HiFi 实验高级",
+    "tag": "HiFi"
   },
   {
     "id": 39,
-    "file": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT.irs",
-    "name": "SRS TruSurround 耳机",
-    "fullName": "SRS TruSurround 耳机",
-    "tag": "SRS"
+    "file": "HRTF自研环绕.irs",
+    "name": "HRTF 自研环绕",
+    "fullName": "HRTF 自研环绕",
+    "tag": "双耳3D"
   },
   {
     "id": 40,
-    "file": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT.irs",
-    "name": "SRS TruSurround 立体声",
-    "fullName": "SRS TruSurround 立体声",
-    "tag": "SRS"
+    "file": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0.irs",
+    "name": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0",
+    "fullName": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0",
+    "tag": "环绕"
   },
   {
     "id": 41,
-    "file": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT.irs",
-    "name": "SRS TruSurround 笔记本",
-    "fullName": "SRS TruSurround 笔记本",
-    "tag": "SRS"
+    "file": "RainSnow Live全景声V5.0.irs",
+    "name": "RainSnow 全景声",
+    "fullName": "RainSnow 全景声",
+    "tag": "环绕"
   },
   {
     "id": 42,
+    "file": "Sony Hi-Fi Effect Hall.irs",
+    "name": "Sony Hi-Fi 大厅",
+    "fullName": "Sony Hi-Fi 大厅",
+    "tag": "索尼"
+  },
+  {
+    "id": 43,
+    "file": "Sony Hi-Fi Groove On.irs",
+    "name": "Sony Hi-Fi Groove",
+    "fullName": "Sony Hi-Fi Groove",
+    "tag": "索尼"
+  },
+  {
+    "id": 44,
+    "file": "Sony Xperia ((128K MP3)) Clear bass MAX.irs",
+    "name": "Sony Clear Bass MAX",
+    "fullName": "Sony Clear Bass MAX",
+    "tag": "索尼"
+  },
+  {
+    "id": 45,
+    "file": "Sony Xperia VPT 1.Studio.irs",
+    "name": "Sony VPT Studio",
+    "fullName": "Sony VPT Studio",
+    "tag": "索尼"
+  },
+  {
+    "id": 46,
+    "file": "Srchy｛DTS｝头戴式-前置模式 4声道.irs",
+    "name": "DTS 头戴前置",
+    "fullName": "DTS 头戴前置",
+    "tag": "DTS"
+  },
+  {
+    "id": 47,
+    "file": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT.irs",
+    "name": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT",
+    "fullName": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT",
+    "tag": "SRS"
+  },
+  {
+    "id": 48,
+    "file": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT.irs",
+    "name": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT",
+    "fullName": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT",
+    "tag": "SRS"
+  },
+  {
+    "id": 49,
+    "file": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT.irs",
+    "name": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT",
+    "fullName": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT",
+    "tag": "SRS"
+  },
+  {
+    "id": 50,
+    "file": "super sound环绕.irs",
+    "name": "Super Sound 环绕",
+    "fullName": "Super Sound 环绕",
+    "tag": "环绕"
+  },
+  {
+    "id": 51,
     "file": "Vox8d.irs",
     "name": "Vox 8D",
     "fullName": "Vox 8D",
     "tag": "8D"
   },
   {
-    "id": 43,
+    "id": 52,
+    "file": "XHR q-环绕声.irs",
+    "name": "XHR 环绕声",
+    "fullName": "XHR 环绕声",
+    "tag": "XHR"
+  },
+  {
+    "id": 53,
+    "file": "XHR 保真之源 (母带级).irs",
+    "name": "XHR 保真之源",
+    "fullName": "XHR 保真之源",
+    "tag": "XHR"
+  },
+  {
+    "id": 54,
+    "file": "XHR 动态低音 - 扬声器 (极限).irs",
+    "name": "XHR 动态低音",
+    "fullName": "XHR 动态低音",
+    "tag": "XHR"
+  },
+  {
+    "id": 55,
+    "file": "XHR 极致HiFi+.irs",
+    "name": "XHR 极致 HiFi+",
+    "fullName": "XHR 极致 HiFi+",
+    "tag": "XHR"
+  },
+  {
+    "id": 56,
+    "file": "XHR 极限重低音 (扬声器).irs",
+    "name": "XHR 极限重低音",
+    "fullName": "XHR 极限重低音",
+    "tag": "XHR"
+  },
+  {
+    "id": 57,
+    "file": "XHR 至臻音效 HE.irs",
+    "name": "XHR 至臻 HE",
+    "fullName": "XHR 至臻 HE",
+    "tag": "XHR"
+  },
+  {
+    "id": 58,
     "file": "【杜比全景声_室内】Dolby_Atmos室内系声场Pro.wav",
-    "name": "Dolby Atmos 室内",
-    "fullName": "Dolby Atmos 室内",
+    "name": "Dolby_Atmos室内系声场Pro",
+    "fullName": "Dolby_Atmos室内系声场Pro",
     "tag": "杜比"
   },
   {
-    "id": 44,
+    "id": 59,
     "file": "【杜比全景声】Dolby ATMOS ((128K MP3)) 1.Default.irs",
-    "name": "Dolby Atmos",
-    "fullName": "Dolby Atmos",
+    "name": "Dolby ATMOS ((128K MP3)) 1.Default",
+    "fullName": "Dolby ATMOS ((128K MP3)) 1.Default",
     "tag": "杜比"
   },
   {
-    "id": 45,
+    "id": 60,
     "file": "【瑞昱高清音频】Realtek HD Audio16DB DTS.irs",
-    "name": "Realtek HD DTS",
-    "fullName": "Realtek HD DTS",
+    "name": "Realtek HD Audio16DB DTS",
+    "fullName": "Realtek HD Audio16DB DTS",
     "tag": "DTS"
   },
   {
-    "id": 46,
+    "id": 61,
     "file": "【黑钻蝰蛇】Kugou_viper_black_diamond.irs",
-    "name": "黑钻蝰蛇",
-    "fullName": "黑钻蝰蛇",
+    "name": "Kugou_viper_black_diamond",
+    "fullName": "Kugou_viper_black_diamond",
     "tag": "蝰蛇"
   },
   {
-    "id": 47,
+    "id": 62,
     "file": "【黑钻蝰蛇（耳机】Kugou_viper_black_diamond_headset.irs",
-    "name": "黑钻蝰蛇（耳机）",
-    "fullName": "黑钻蝰蛇（耳机）",
+    "name": "Kugou_viper_black_diamond_headset",
+    "fullName": "Kugou_viper_black_diamond_headset",
     "tag": "蝰蛇"
   },
   {
-    "id": 48,
+    "id": 63,
+    "file": "三星5.1立体声.IRS",
+    "name": "三星 5.1",
+    "fullName": "三星 5.1",
+    "tag": "环绕"
+  },
+  {
+    "id": 64,
+    "file": "人声环绕.irs",
+    "name": "人声环绕",
+    "fullName": "人声环绕",
+    "tag": "环绕"
+  },
+  {
+    "id": 65,
+    "file": "低音扬声器.irs",
+    "name": "低音扬声器",
+    "fullName": "低音扬声器",
+    "tag": "环绕"
+  },
+  {
+    "id": 66,
     "file": "全景环绕 360.irs",
     "name": "全景环绕 360",
     "fullName": "全景环绕 360",
     "tag": "环绕"
   },
   {
-    "id": 49,
+    "id": 67,
+    "file": "哈曼音效脉冲.irs",
+    "name": "哈曼音效",
+    "fullName": "哈曼音效",
+    "tag": "环绕"
+  },
+  {
+    "id": 68,
+    "file": "最强混合-13.irs",
+    "name": "最强混合",
+    "fullName": "最强混合",
+    "tag": "环绕"
+  },
+  {
+    "id": 69,
+    "file": "极致HiFi.irs",
+    "name": "极致 HiFi",
+    "fullName": "极致 HiFi",
+    "tag": "HiFi"
+  },
+  {
+    "id": 70,
+    "file": "索尼醇音+.irs",
+    "name": "索尼醇音+",
+    "fullName": "索尼醇音+",
+    "tag": "索尼"
+  },
+  {
+    "id": 71,
+    "file": "臻享扬声器+.irs",
+    "name": "臻享扬声器+",
+    "fullName": "臻享扬声器+",
+    "tag": "环绕"
+  },
+  {
+    "id": 72,
+    "file": "臻享高解析+.irs",
+    "name": "臻享高解析+",
+    "fullName": "臻享高解析+",
+    "tag": "环绕"
+  },
+  {
+    "id": 73,
+    "file": "蝰蛇杜比.irs",
+    "name": "蝰蛇杜比",
+    "fullName": "蝰蛇杜比",
+    "tag": "杜比"
+  },
+  {
+    "id": 74,
+    "file": "酷狗beats耳机音效.irs",
+    "name": "酷狗 Beats 耳机",
+    "fullName": "酷狗 Beats 耳机",
+    "tag": "酷狗"
+  },
+  {
+    "id": 75,
+    "file": "酷狗megaBass重低音音效.irs",
+    "name": "酷狗 MegaBass",
+    "fullName": "酷狗 MegaBass",
+    "tag": "酷狗"
+  },
+  {
+    "id": 76,
+    "file": "酷狗S-XBS重低音.irs",
+    "name": "酷狗 S-XBS",
+    "fullName": "酷狗 S-XBS",
+    "tag": "酷狗"
+  },
+  {
+    "id": 77,
     "file": "酷狗SRS-3D.irs",
     "name": "酷狗 SRS-3D",
     "fullName": "酷狗 SRS-3D",
-    "tag": "双耳3D"
+    "tag": "SRS"
+  },
+  {
+    "id": 78,
+    "file": "酷狗TruStadio Pro环绕音效.irs",
+    "name": "酷狗 TruStudio Pro",
+    "fullName": "酷狗 TruStudio Pro",
+    "tag": "酷狗"
+  },
+  {
+    "id": 79,
+    "file": "酷狗声学客厅.irs",
+    "name": "酷狗 声学客厅",
+    "fullName": "酷狗 声学客厅",
+    "tag": "酷狗"
+  },
+  {
+    "id": 80,
+    "file": "酷狗大型露天演唱会.irs",
+    "name": "酷狗 露天演唱会",
+    "fullName": "酷狗 露天演唱会",
+    "tag": "酷狗"
+  },
+  {
+    "id": 81,
+    "file": "酷狗差分环绕.irs",
+    "name": "酷狗 差分环绕",
+    "fullName": "酷狗 差分环绕",
+    "tag": "酷狗"
+  },
+  {
+    "id": 82,
+    "file": "酷狗环境虚拟化（大音乐厅）.irs",
+    "name": "酷狗 大音乐厅",
+    "fullName": "酷狗 大音乐厅",
+    "tag": "酷狗"
+  },
+  {
+    "id": 83,
+    "file": "酷狗生活房间.irs",
+    "name": "酷狗 生活房间",
+    "fullName": "酷狗 生活房间",
+    "tag": "酷狗"
+  },
+  {
+    "id": 84,
+    "file": "酷狗自然低音.irs",
+    "name": "酷狗 自然低音",
+    "fullName": "酷狗 自然低音",
+    "tag": "酷狗"
+  },
+  {
+    "id": 85,
+    "file": "酷狗蝰蛇频谱扩展技术模拟.irs",
+    "name": "酷狗 蝰蛇频谱扩展",
+    "fullName": "酷狗 蝰蛇频谱扩展",
+    "tag": "酷狗"
+  },
+  {
+    "id": 86,
+    "file": "酷狗诺基亚5320XpressMusic音效.irs",
+    "name": "酷狗 诺基亚 5320",
+    "fullName": "酷狗 诺基亚 5320",
+    "tag": "酷狗"
   }
 ]

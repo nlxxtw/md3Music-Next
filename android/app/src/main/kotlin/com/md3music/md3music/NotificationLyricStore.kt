@@ -51,6 +51,7 @@ object NotificationLyricStore {
         lineText = ""
         words = emptyList()
         handler.removeCallbacks(tickRunnable)
+        pushSessionLyricLine("")
         requestRefresh(force = true)
     }
 
@@ -70,7 +71,9 @@ object NotificationLyricStore {
         lineStartMs: Long = 0L,
         lineEndMs: Long = 0L,
     ) {
-        lineText = text.trim()
+        val next = text.trim()
+        val lineChanged = next != lineText
+        lineText = next
         this.lineStartMs = lineStartMs
         this.lineEndMs = if (lineEndMs > lineStartMs) lineEndMs else lineStartMs + 5000L
         playing = isPlaying
@@ -90,6 +93,10 @@ object NotificationLyricStore {
         words = parsed
 
         handler.removeCallbacks(tickRunnable)
+        if (lineChanged) {
+            // 锁屏 / 原子岛读 MediaSession，不读通知栏 Spannable；换行时同步纯文本
+            pushSessionLyricLine(lineText)
+        }
         requestRefresh(force = true)
         if (playing && lineText.isNotEmpty()) {
             scheduleNextTick()
@@ -215,6 +222,14 @@ object NotificationLyricStore {
             } catch (e: Exception) {
                 Log.w(TAG, "refresh failed: ${e.message}")
             }
+        }
+    }
+
+    private fun pushSessionLyricLine(text: String) {
+        try {
+            AudioPlayer.updateActiveSessionLyricLine(text)
+        } catch (e: Exception) {
+            Log.w(TAG, "session lyric push failed: ${e.message}")
         }
     }
 }
