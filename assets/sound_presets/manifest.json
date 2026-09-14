@@ -1,0 +1,16 @@
+[
+  {"id": 1, "file": "SRS音效_1_1.irs", "name": "SRS音效_1_1", "fullName": "SRS音效_1_1", "tag": "SRS"},
+  {"id": 2, "file": "SRS音效_1_2.irs", "name": "SRS音效_1_2", "fullName": "SRS音效_1_2", "tag": "SRS"},
+  {"id": 3, "file": "SRS音效_2_1.irs", "name": "SRS音效_2_1", "fullName": "SRS音效_2_1", "tag": "SRS"},
+  {"id": 4, "file": "SRS音效_2_2.irs", "name": "SRS音效_2_2", "fullName": "SRS音效_2_2", "tag": "SRS"},
+  {"id": 5, "file": "【杜比全景声_室内】Dolby_Atmos室内系声场Pro.wav", "name": "Dolby_Atmos室内系声场Pro", "fullName": "【杜比全景声_室内】Dolby_Atmos室内系声场Pro", "tag": "杜比"},
+  {"id": 6, "file": "【杜比全景声】Dolby ATMOS ((128K MP3)) 1.Default.irs", "name": "Dolby ATMOS ((128K MP3)) 1.Default", "fullName": "【杜比全景声】Dolby ATMOS ((128K MP3)) 1.Default", "tag": "杜比"},
+  {"id": 7, "file": "【杜比定向逻辑II低频效果增强】Dolby Pro Logic II LFE.irs", "name": "Dolby Pro Logic II LFE", "fullName": "【杜比定向逻辑II低频效果增强】Dolby Pro Logic II LFE", "tag": "杜比"},
+  {"id": 8, "file": "【杜比定向逻辑II录音室】Dolby Pro Logic II Studio.irs", "name": "Dolby Pro Logic II Studio", "fullName": "【杜比定向逻辑II录音室】Dolby Pro Logic II Studio", "tag": "杜比"},
+  {"id": 9, "file": "【杜比定向逻辑II影院】Dolby Pro Logic II Cinema.irs", "name": "Dolby Pro Logic II Cinema", "fullName": "【杜比定向逻辑II影院】Dolby Pro Logic II Cinema", "tag": "杜比"},
+  {"id": 10, "file": "【杜比定向逻辑II电影】Dolby Pro Logic II Movie.irs", "name": "Dolby Pro Logic II Movie", "fullName": "【杜比定向逻辑II电影】Dolby Pro Logic II Movie", "tag": "杜比"},
+  {"id": 11, "file": "【杜比定向逻辑II音乐】Dolby Pro Logic II Music.irs", "name": "Dolby Pro Logic II Music", "fullName": "【杜比定向逻辑II音乐】Dolby Pro Logic II Music", "tag": "杜比"},
+  {"id": 12, "file": "【瑞昱高清音频】Realtek HD Audio16DB DTS.irs", "name": "Realtek HD Audio16DB DTS", "fullName": "【瑞昱高清音频】Realtek HD Audio16DB DTS", "tag": "DTS"},
+  {"id": 13, "file": "【黑钻蝰蛇】Kugou_viper_black_diamond.irs", "name": "Kugou_viper_black_diamond", "fullName": "【黑钻蝰蛇】Kugou_viper_black_diamond", "tag": "蝰蛇"},
+  {"id": 14, "file": "【黑钻蝰蛇（耳机】Kugou_viper_black_diamond_headset.irs", "name": "Kugou_viper_black_diamond_headset", "fullName": "【黑钻蝰蛇（耳机】Kugou_viper_black_diamond_headset", "tag": "蝰蛇"}
+]

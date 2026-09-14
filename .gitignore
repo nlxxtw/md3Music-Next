@@ -1,0 +1,38 @@
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Android
+**/local.properties
+**/.gradle/
+**/captures/
+**/*.iml
+**/.idea/
+**/key.properties
+**/*.jks
+**/*.keystore
+android/app/release.keystore
+android/keystore.properties
+
+# iOS / macOS
+**/Pods/
+**/DerivedData/
+**/*.xcworkspace
+!default.xcworkspace
+**/Flutter/ephemeral/
+
+# Misc
+*.log
+.DS_Store
+*.swp
+.vscode/
+.cursor/
+.md3/
+.import.fastimport
+**/node_modules/
