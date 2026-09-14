@@ -53,38 +53,33 @@ def impulse_pair(
         d = int(round(delay_ms * SR / 1000.0))
         if 0 <= d < n:
             buf[d] += amp
-        # short pinna-ish secondary taps
-        for k, a in ((0.18, 0.22), (0.42, 0.12), (0.85, 0.07)):
+        # shorter / quieter pinna taps — keep HF clearer
+        for k, a in ((0.12, 0.14), (0.28, 0.07)):
             j = d + int(k * SR / 1000.0)
             if 0 <= j < n:
                 buf[j] += amp * a * brightness
 
-    # Direct: left ear earlier/louder when source is left-biased in the matrix.
-    # Asymmetry is intentional so L'≠R' even before orbit.
+    # Keep LL/RR closer in level so orbit doesn't fight a lopsided matrix
     gain_l = 10 ** (ild_db / 40.0)
     gain_r = 10 ** (-ild_db / 40.0)
     place(ll, itd_l_ms, 1.0 * gain_l)
     place(rr, itd_r_ms, 1.0 * gain_r)
-    # Crossfeed (weaker, later)
-    place(lr, itd_l_ms + 0.25, 0.28 * gain_r)
-    place(rl, itd_r_ms + 0.25, 0.28 * gain_l)
+    place(lr, itd_l_ms + 0.22, 0.18 * gain_r)
+    place(rl, itd_r_ms + 0.22, 0.18 * gain_l)
 
-    # Mild controlled early reflections (not long noisy reverb)
     reflections = [
-        (6.5, 0.16),
-        (11.0, 0.11),
-        (17.5, 0.08),
-        (24.0, 0.055),
-        (33.0, 0.035),
+        (5.5, 0.10),
+        (10.0, 0.06),
+        (16.0, 0.04),
+        (22.0, 0.025),
     ]
     for ms, a in reflections:
         amp = a * room
-        place(ll, ms + itd_l_ms * 0.3, amp * gain_l)
-        place(rr, ms + itd_r_ms * 0.3, amp * gain_r)
-        place(lr, ms + 0.4 + itd_l_ms * 0.2, amp * 0.55 * gain_r)
-        place(rl, ms + 0.4 + itd_r_ms * 0.2, amp * 0.55 * gain_l)
+        place(ll, ms + itd_l_ms * 0.25, amp * gain_l)
+        place(rr, ms + itd_r_ms * 0.25, amp * gain_r)
+        place(lr, ms + 0.3 + itd_l_ms * 0.15, amp * 0.4 * gain_r)
+        place(rl, ms + 0.3 + itd_r_ms * 0.15, amp * 0.4 * gain_l)
 
-    # Exponential decay envelope + tiny HF damping via one-pole feel (post smooth)
     for i in range(n):
         env = math.exp(-decay * i / SR)
         ll[i] *= env
@@ -92,11 +87,11 @@ def impulse_pair(
         rl[i] *= env
         rr[i] *= env
 
-    # Light smoothing (reduces clicky / harsh noise)
+    # Very light smooth only (old 0.72/0.28 killed treble → muddy)
     def smooth(buf: list[float]) -> None:
         prev = 0.0
         for i in range(n):
-            prev = 0.72 * prev + 0.28 * buf[i]
+            prev = 0.25 * prev + 0.75 * buf[i]
             buf[i] = prev
 
     smooth(ll)
@@ -104,7 +99,6 @@ def impulse_pair(
     smooth(rl)
     smooth(rr)
 
-    # Joint peak normalize to 0.82
     peak = max(abs(v) for seq in (ll, lr, rl, rr) for v in seq) or 1.0
     scale = 0.82 / peak
     for seq in (ll, lr, rl, rr):
@@ -115,10 +109,10 @@ def impulse_pair(
 
 PRESETS = [
     # name, duration, itdL, itdR, ild_db, decay, room, brightness
-    ("8D环绕感-宽景.wav", 0.22, 0.12, 0.42, 3.5, 9.0, 0.85, 1.05),
-    ("8D环绕感-深空.wav", 0.32, 0.08, 0.55, 4.2, 6.5, 1.05, 0.85),
-    ("双耳3D-舞台.wav", 0.28, 0.15, 0.48, 2.8, 7.5, 1.15, 0.95),
-    ("双耳3D-近场.wav", 0.14, 0.18, 0.38, 5.0, 14.0, 0.45, 1.15),
+    ("8D环绕感-宽景.wav", 0.16, 0.10, 0.32, 1.8, 14.0, 0.45, 1.15),
+    ("8D环绕感-深空.wav", 0.22, 0.08, 0.38, 2.2, 11.0, 0.55, 1.05),
+    ("双耳3D-舞台.wav", 0.18, 0.12, 0.34, 1.5, 12.0, 0.60, 1.10),
+    ("双耳3D-近场.wav", 0.10, 0.14, 0.28, 2.5, 18.0, 0.25, 1.20),
 ]
 
 

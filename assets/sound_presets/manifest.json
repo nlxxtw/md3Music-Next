@@ -197,83 +197,146 @@
   },
   {
     "id": 29,
+    "file": "EzRlon-〔酷狗3D丽音〕 「音效移植」［重制版］.irs",
+    "name": "EzRlon-〔酷狗3D丽音〕 「音效移植」［重制版］",
+    "fullName": "EzRlon-〔酷狗3D丽音〕 「音效移植」［重制版］",
+    "tag": "双耳3D"
+  },
+  {
+    "id": 30,
+    "file": "EzRlon-格莱美 2  ［清晰度提升］.irs",
+    "name": "EzRlon-格莱美 2  ［清晰度提升］",
+    "fullName": "EzRlon-格莱美 2  ［清晰度提升］",
+    "tag": "环绕"
+  },
+  {
+    "id": 31,
+    "file": "EzRlon-格莱美「音效移植2_.irs",
+    "name": "EzRlon-格莱美「音效移植2_",
+    "fullName": "EzRlon-格莱美「音效移植2_",
+    "tag": "环绕"
+  },
+  {
+    "id": 32,
+    "file": "EzRlon-格莱美「音效移植_.irs",
+    "name": "EzRlon-格莱美「音效移植_",
+    "fullName": "EzRlon-格莱美「音效移植_",
+    "tag": "环绕"
+  },
+  {
+    "id": 33,
+    "file": "EzRlon-格莱美「音效移植」.irs",
+    "name": "EzRlon-格莱美「音效移植」",
+    "fullName": "EzRlon-格莱美「音效移植」",
+    "tag": "环绕"
+  },
+  {
+    "id": 34,
+    "file": "EzRlon-酷狗-3D丽音[移植音效].irs",
+    "name": "EzRlon-酷狗-3D丽音[移植音效]",
+    "fullName": "EzRlon-酷狗-3D丽音[移植音效]",
+    "tag": "双耳3D"
+  },
+  {
+    "id": 35,
+    "file": "EzRlon-酷狗-HIFI现场[移植音效].irs",
+    "name": "EzRlon-酷狗-HIFI现场[移植音效]",
+    "fullName": "EzRlon-酷狗-HIFI现场[移植音效]",
+    "tag": "环绕"
+  },
+  {
+    "id": 36,
+    "file": "EzRlon-酷狗-纯净人声[移植音效].irs",
+    "name": "EzRlon-酷狗-纯净人声[移植音效]",
+    "fullName": "EzRlon-酷狗-纯净人声[移植音效]",
+    "tag": "环绕"
+  },
+  {
+    "id": 37,
+    "file": "EzRlon-酷狗-超重低音[移植音效].irs",
+    "name": "EzRlon-酷狗-超重低音[移植音效]",
+    "fullName": "EzRlon-酷狗-超重低音[移植音效]",
+    "tag": "环绕"
+  },
+  {
+    "id": 38,
     "file": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0.irs",
     "name": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0",
     "fullName": "Joe0Bloggs耳机3D 4声道脉冲--广域--192000Hz对应 1.0",
     "tag": "双耳3D"
   },
   {
-    "id": 30,
+    "id": 39,
     "file": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT.irs",
     "name": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT",
     "fullName": "srs_audio_sandbox_01_music_headset_InDaClub+TruSurroundXT",
     "tag": "SRS"
   },
   {
-    "id": 31,
+    "id": 40,
     "file": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT.irs",
     "name": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT",
     "fullName": "srs_audio_sandbox_04_music_stereo_InDaClub+TruSurroundXT",
     "tag": "SRS"
   },
   {
-    "id": 32,
+    "id": 41,
     "file": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT.irs",
     "name": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT",
     "fullName": "srs_audio_sandbox_06_music_laptop_InDaClub+TruSurroundXT",
     "tag": "SRS"
   },
   {
-    "id": 33,
+    "id": 42,
     "file": "Vox8d.irs",
     "name": "Vox8d",
     "fullName": "Vox8d",
     "tag": "8D"
   },
   {
-    "id": 34,
+    "id": 43,
     "file": "【杜比全景声_室内】Dolby_Atmos室内系声场Pro.wav",
     "name": "Dolby_Atmos室内系声场Pro",
     "fullName": "【杜比全景声_室内】Dolby_Atmos室内系声场Pro",
     "tag": "杜比"
   },
   {
-    "id": 35,
+    "id": 44,
     "file": "【杜比全景声】Dolby ATMOS ((128K MP3)) 1.Default.irs",
     "name": "Dolby ATMOS ((128K MP3)) 1.Default",
     "fullName": "【杜比全景声】Dolby ATMOS ((128K MP3)) 1.Default",
     "tag": "杜比"
   },
   {
-    "id": 36,
+    "id": 45,
     "file": "【瑞昱高清音频】Realtek HD Audio16DB DTS.irs",
     "name": "Realtek HD Audio16DB DTS",
     "fullName": "【瑞昱高清音频】Realtek HD Audio16DB DTS",
     "tag": "DTS"
   },
   {
-    "id": 37,
+    "id": 46,
     "file": "【黑钻蝰蛇】Kugou_viper_black_diamond.irs",
     "name": "Kugou_viper_black_diamond",
     "fullName": "【黑钻蝰蛇】Kugou_viper_black_diamond",
     "tag": "蝰蛇"
   },
   {
-    "id": 38,
+    "id": 47,
     "file": "【黑钻蝰蛇（耳机】Kugou_viper_black_diamond_headset.irs",
     "name": "Kugou_viper_black_diamond_headset",
     "fullName": "【黑钻蝰蛇（耳机】Kugou_viper_black_diamond_headset",
     "tag": "蝰蛇"
   },
   {
-    "id": 39,
+    "id": 48,
     "file": "全景环绕 360.irs",
     "name": "全景环绕 360",
     "fullName": "全景环绕 360",
     "tag": "环绕"
   },
   {
-    "id": 40,
+    "id": 49,
     "file": "酷狗SRS-3D.irs",
     "name": "酷狗SRS-3D",
     "fullName": "酷狗SRS-3D",

@@ -228,24 +228,25 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Flutter build APK (universal)
+      - name: Flutter build APK (split per ABI)
         run: |
-          flutter build apk --release \
+          flutter build apk --release --split-per-abi \
             --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
             --build-name=${{ steps.version.outputs.version }} \
             --build-number=${{ steps.version.outputs.versionCode }}
 
-      - name: Verify APK
+      - name: Verify APKs
         run: |
           ls -lh build/app/outputs/flutter-apk/
-          f=build/app/outputs/flutter-apk/app-release.apk
-          echo "=== $f ==="
-          if unzip -l "$f" > /dev/null; then
-            echo "  OK ($(du -h "$f" | cut -f1))"
-          else
-            echo "  CORRUPTED"
-            exit 1
-          fi
+          for f in build/app/outputs/flutter-apk/*.apk; do
+            echo "=== $f ==="
+            if unzip -l "$f" > /dev/null; then
+              echo "  OK ($(du -h "$f" | cut -f1))"
+            else
+              echo "  CORRUPTED"
+              exit 1
+            fi
+          done
 
       # ============================================================
       # 7. 生成更新日志
@@ -296,7 +297,9 @@ jobs:
             echo "_Built: $(date -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
             echo "### Downloads"
-            echo "- **app-release.apk** — 通用包（含 arm64-v8a / armeabi-v7a / x86_64）"
+            echo "- **app-arm64-v8a-release.apk** — 推荐（约 38MB，绝大多数手机）"
+            echo "- **app-armeabi-v7a-release.apk** — 较旧 32 位设备"
+            echo "- **app-x86_64-release.apk** — 模拟器 / 部分平板"
             echo ""
             echo "### Commits (${RANGE:-最近 20 条})"
             echo ""
@@ -334,7 +337,9 @@ jobs:
           prerelease: false
           append_body: false  # 默认行为：用自动生成的 changelog 替换 release 描述
           files: |
-            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

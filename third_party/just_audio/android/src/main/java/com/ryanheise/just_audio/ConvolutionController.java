@@ -262,24 +262,24 @@ public final class ConvolutionController {
     String name = label == null ? "" : label;
     boolean orbitPreset = isOrbitPresetName(name);
     if (orbitPreset) {
-      // Strong wet + light dry so L↔R orbit is audible; gain keeps headroom.
-      wet = 0.88f;
-      dry = 0.18f;
-      outputGain = 0.78f;
-      // 宽景稍快、深空稍慢；双耳近场更快一点更有定位感
-      float hz = 0.11f;
+      // 清晰优先：保留足够干声；环绕只做轻量 L/R 摆动，避免糊成一团。
+      wet = 0.55f;
+      dry = 0.55f;
+      outputGain = 0.92f;
+      float hz = 0.08f;
       if (name.contains("深空")) {
-        hz = 0.07f;
+        hz = 0.055f;
       } else if (name.contains("近场")) {
-        hz = 0.14f;
+        hz = 0.10f;
       } else if (name.contains("舞台")) {
-        hz = 0.09f;
+        hz = 0.07f;
       } else if (name.contains("宽景") || name.contains("8D")) {
-        hz = 0.12f;
+        hz = 0.085f;
       }
       orbitEnabled = true;
       orbitHz = hz;
-      orbitDepth = 0.92f;
+      // depth 过深会把卷积结果压成单声道 mid，人声/细节会「听不清」
+      orbitDepth = 0.45f;
     } else if (binaural) {
       wet = 0.72f;
       dry = 0.35f;

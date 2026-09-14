@@ -54,7 +54,7 @@ import 'settings_search_index.g.dart';
 /// Fallback display when runtime PackageInfo read fails.
 const String kBuildAppVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: '4.0.0',
+  defaultValue: '13.0.0',
 );
 
 class SettingsPage extends StatefulWidget {

@@ -152,8 +152,8 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     float orbitDepth = controller.getOrbitDepth();
     float phaseStep =
         orbit && sampleRate > 0 ? (float) (2.0 * Math.PI * orbitHz / sampleRate) : 0f;
-    // Max ITD ~0.65 ms (enough for clear L/R without comb noise).
-    int maxItd = Math.max(1, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 1500));
+    // 很短的 Haas（约 0.25ms）：再大容易梳状滤波、发糊
+    int maxItd = Math.max(1, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 4000));
 
     for (int i = 0; i < BLOCK; i++) {
       float wetL = timeBuf[i] + overlapL[i];
@@ -181,45 +181,39 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
   }
 
   /**
-   * Rotate a mid image around the head: equal-power pan + Haas ITD.
-   * Keeps a little of the IR stereo width so it doesn't collapse to mono.
+   * 轻量 360 环绕：在保留卷积立体声细节的前提下左右摆动。
+   * 旧实现把 wet 压成 mono mid 再 pan，会明显「听不清」。
    */
   private float[] applyOrbit(float wetL, float wetR, float phase, float depth, int maxItd) {
-    float mid = 0.5f * (wetL + wetR);
-    float side = 0.5f * (wetL - wetR);
-
-    // az: 0=front, +π/2=right, π=back, +3π/2=left — full 360.
-    float sinA = (float) Math.sin(phase);
-    float cosA = (float) Math.cos(phase);
-    // Equal-power pan from sin(az): -1 left … +1 right
-    float pan = sinA;
+    float pan = (float) Math.sin(phase); // -1 left … +1 right
     float angle = (pan + 1f) * (float) (Math.PI / 4.0);
     float gL = (float) Math.cos(angle);
     float gR = (float) Math.sin(angle);
-    // Slightly quieter behind the head (more natural circle)
-    float frontBias = 0.72f + 0.28f * Math.max(0f, cosA);
-    gL *= frontBias;
-    gR *= frontBias;
 
-    // Haas: delay the contralateral ear so the image "runs" around.
-    int dL = pan > 0f ? Math.round(pan * maxItd) : 0;
-    int dR = pan < 0f ? Math.round(-pan * maxItd) : 0;
+    // 对湿声做软平衡，而不是 mid 单声道塌缩
+    float amt = depth * 0.85f;
+    float balL = (1f - amt) + amt * gL;
+    float balR = (1f - amt) + amt * gR;
+    float orbL = wetL * balL;
+    float orbR = wetR * balR;
+
+    // 轻微 Haas：只延迟对侧一点点，避免强梳状
+    float mid = 0.5f * (wetL + wetR);
+    int dL = pan > 0.15f ? Math.round(pan * maxItd) : 0;
+    int dR = pan < -0.15f ? Math.round(-pan * maxItd) : 0;
     orbitDelayL[orbitDelayWrite] = mid;
     orbitDelayR[orbitDelayWrite] = mid;
     int idxL = orbitDelayWrite - dL;
     if (idxL < 0) idxL += ORBIT_DELAY_LEN;
     int idxR = orbitDelayWrite - dR;
     if (idxR < 0) idxR += ORBIT_DELAY_LEN;
-    float delayedL = orbitDelayL[idxL];
-    float delayedR = orbitDelayR[idxR];
+    float haasMix = 0.12f * depth;
+    orbL = orbL * (1f - haasMix) + orbitDelayL[idxL] * gL * haasMix;
+    orbR = orbR * (1f - haasMix) + orbitDelayR[idxR] * gR * haasMix;
     orbitDelayWrite = (orbitDelayWrite + 1) % ORBIT_DELAY_LEN;
 
-    float orbL = delayedL * gL;
-    float orbR = delayedR * gR;
-    // Blend orbit mono-pan with a bit of IR side for width
-    float width = 0.28f;
-    orbitTmp[0] = depth * (orbL + width * side) + (1f - depth) * wetL;
-    orbitTmp[1] = depth * (orbR - width * side) + (1f - depth) * wetR;
+    orbitTmp[0] = orbL;
+    orbitTmp[1] = orbR;
     return orbitTmp;
   }
 
