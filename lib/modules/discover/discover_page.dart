@@ -318,7 +318,9 @@ class _DiscoverPageState extends State<DiscoverPage> {
     return PopupMenuButton<DiscoverMusicSource>(
       tooltip: '切换音源',
       offset: const Offset(0, kToolbarHeight - 8),
-      onSelected: ds.setSource,
+      onSelected: (s) {
+        ds.setSource(s);
+      },
       itemBuilder: (context) => DiscoverMusicSource.values
           .map(
             (s) => CheckedPopupMenuItem<DiscoverMusicSource>(

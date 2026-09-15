@@ -51,6 +51,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.38.5'
           cache: true
 
       # 缓存 Gradle
