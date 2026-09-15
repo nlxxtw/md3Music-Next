@@ -38,6 +38,8 @@ class Song {
   final double? loudnessLufs;
   /// 音量均衡（响度归一）用：歌曲真峰值（dBTP/dBFS），可空。
   final double? loudnessPeakDb;
+  /// 音源：`null`/`kugou` 为原酷狗；`qq` / `soda` 为发现页远程源。
+  final String? source;
 
   const Song({
     required this.id,
@@ -62,7 +64,22 @@ class Song {
     this.isLongAudio = false,
     this.loudnessLufs,
     this.loudnessPeakDb,
+    this.source,
   });
+
+  /// 是否为发现页 QQ / 汽水远程曲目（走 discovery API，不走酷狗登录/解析）。
+  bool get isRemoteDiscovery {
+    final s = source;
+    return s == 'qq' || s == 'soda';
+  }
+
+  /// 远程曲目用于向 discovery API 传参的原始 id（去掉 `qq:` / `soda:` 前缀）。
+  String get remoteTrackId {
+    final s = source;
+    if (s == 'qq' && id.startsWith('qq:')) return id.substring(3);
+    if (s == 'soda' && id.startsWith('soda:')) return id.substring(5);
+    return id;
+  }
 
   String get displayDuration {
     final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -105,6 +122,7 @@ class Song {
       isLongAudio: (json['isLongAudio'] as bool?) ?? false,
       loudnessLufs: (json['loudnessLufs'] as num?)?.toDouble(),
       loudnessPeakDb: (json['loudnessPeakDb'] as num?)?.toDouble(),
+      source: json['source'] as String?,
     );
   }
 
@@ -132,6 +150,7 @@ class Song {
       'isLongAudio': isLongAudio,
       'loudnessLufs': loudnessLufs,
       'loudnessPeakDb': loudnessPeakDb,
+      if (source != null) 'source': source,
     };
   }
 
@@ -158,6 +177,7 @@ class Song {
     bool? isLongAudio,
     double? loudnessLufs,
     double? loudnessPeakDb,
+    String? source,
   }) {
     return Song(
       id: id ?? this.id,
@@ -182,6 +202,7 @@ class Song {
       isLongAudio: isLongAudio ?? this.isLongAudio,
       loudnessLufs: loudnessLufs ?? this.loudnessLufs,
       loudnessPeakDb: loudnessPeakDb ?? this.loudnessPeakDb,
+      source: source ?? this.source,
     );
   }
 

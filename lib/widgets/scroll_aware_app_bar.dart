@@ -38,6 +38,9 @@ class ScrollAwareAppBar extends StatefulWidget implements PreferredSizeWidget {
   final double fadeRange;
   final Widget? leading;
 
+  /// 覆盖 AppBar 左侧槽宽（音源切换等自定义 leading 需要比默认 56 更宽）。
+  final double? leadingWidth;
+
   /// 紧跟在标题右边的一枚组件（如发现页的问候胶囊），跟着标题左对齐。
   ///
   /// 宽度由它自己的内容决定，上限是标题区剩下的宽度——[AppBar] 的标题区不含
@@ -66,6 +69,7 @@ class ScrollAwareAppBar extends StatefulWidget implements PreferredSizeWidget {
     this.scrollController,
     this.fadeRange = 80,
     this.leading,
+    this.leadingWidth,
     this.titleTrailing,
     this.opaque = false,
     this.tabId,
@@ -137,6 +141,7 @@ class _ScrollAwareAppBarState extends State<ScrollAwareAppBar> {
       surfaceTintColor: Colors.transparent, // 关闭 surfaceTint 着色
       foregroundColor: colorScheme.onSurface,
       leading: widget.leading,
+      leadingWidth: widget.leadingWidth,
       // 标题始终显示（用户反馈：初始就应可见，不依赖滚动）
       title: _buildTitle(textTheme),
       actions: widget.actions,

@@ -120,14 +120,16 @@ class FavoritesProvider extends ChangeNotifier {
   Future<void> toggleFavorite(Song song) async {
     final api = KugouApiClient();
     final isLoggedIn = api.isLoggedIn;
+    // QQ / 汽水：只写本地收藏库，不同步酷狗云端「我喜欢」
+    final remoteOnly = song.isRemoteDiscovery;
 
     // 动态获取"我喜欢"歌单的 listId
-    final playlist = await _getMyFavoritePlaylist();
+    final playlist = remoteOnly ? null : await _getMyFavoritePlaylist();
     final listid = playlist?.listId ?? '2';
 
     if (_favoriteIds.contains(song.id)) {
       // 先调 API，成功后再更新本地状态
-      if (isLoggedIn) {
+      if (isLoggedIn && !remoteOnly) {
         try {
           // 优先用 fileId（歌单里的记录ID），没有再用 hash 兜底
           final fileIds = song.fileId != null && song.fileId! > 0
@@ -147,7 +149,7 @@ class FavoritesProvider extends ChangeNotifier {
       _favorites.insert(0, song);
       await _repository.addFavorite(song);
 
-      if (isLoggedIn) {
+      if (isLoggedIn && !remoteOnly) {
         final data =
             '${song.title}|${song.id}|${song.albumId ?? 0}|${int.tryParse(song.albumAudioId ?? '') ?? 0}';
         // 后台同步，不阻塞 UI；失败时静默记录，下次启动时重试

@@ -68,6 +68,7 @@ import 'providers/shortcut_config_provider.dart';
 import 'providers/tab_config_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/comment_display_provider.dart';
+import 'providers/discover_source_provider.dart';
 import 'services/kugou_server.dart';
 import 'widgets/dlna_casting_overlay.dart';
 
@@ -165,6 +166,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DlnaProvider()),
         // 评论显示设置（字号等）
         ChangeNotifierProvider(create: (_) => CommentDisplayProvider()),
+        // 发现页音源：酷狗 / QQ / 汽水
+        ChangeNotifierProvider(create: (_) => DiscoverSourceProvider()),
         // 可选扩展：私有构建注入的额外 Provider（默认无）
         ...?extraProviders,
       ],

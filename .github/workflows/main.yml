@@ -228,9 +228,11 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Flutter build APK (split per ABI)
+      - name: Flutter build APK (arm64 / armeabi-v7a / x86_64 only)
         run: |
+          # --split-per-abi：只产出三份 ABI APK，不打通用包
           flutter build apk --release --split-per-abi \
+            --target-platform android-arm,android-arm64,android-x64 \
             --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
             --build-name=${{ steps.version.outputs.version }} \
             --build-number=${{ steps.version.outputs.versionCode }}
@@ -309,9 +311,6 @@ jobs:
               git log --pretty=format:"- \`%h\` %s" -20 --no-merges
             fi
             echo ""
-            echo ""
-            echo "---"
-            echo "🤖 本版本由 GitHub Actions 自动构建。"
           } > changelog.md
 
           cat changelog.md
@@ -380,8 +379,11 @@ jobs:
               "minBuild": int(data.get("minBuild") or 0),
               "force": bool(data.get("force") or False),
               "url": f"https://github.com/{repo}/releases/tag/{tag}",
-              "title": data.get("title") or "发现新版本",
-              "message": data.get("message") or f"MD3Music v{version} 已发布，请更新后继续使用。",
+              "title": "发现新版本",
+              "message": (
+                  os.environ.get("UPDATE_MESSAGE")
+                  or f"MD3Music v{version} 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
+              ),
           })
           with open(path, "w", encoding="utf-8", newline="\n") as f:
               json.dump(data, f, ensure_ascii=False, indent=2)

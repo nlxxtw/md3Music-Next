@@ -35,6 +35,7 @@ import 'favorites_provider.dart';
 import 'kugou_provider.dart';
 import '../services/kugou_api/kugou_api_client.dart';
 import '../services/kugou_api/kugou_models.dart';
+import '../services/discovery_api/discovery_api_client.dart';
 
 enum AppLoopMode { off, one, all }
 
@@ -1821,18 +1822,21 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (songs.isEmpty) return;
     _resetAbnormalRetry();
 
+    final startSong = songs[startIndex];
+    final isRemote = startSong.isRemoteDiscovery;
+
     // 可选扩展：播放前解析本地已持久化的音频（默认关闭）
     String? cachedPath;
     final localAudioResolver = PlayerProvider.resolveLocalAudioPath;
     if (localAudioResolver != null) {
       cachedPath = await localAudioResolver(
-        songs[startIndex].id,
+        startSong.id,
         _audioQuality.value,
       );
     }
 
-    // 缓存未命中且未登录时才提示登录
-    if (cachedPath == null && !KugouApiClient().isLoggedIn) {
+    // 缓存未命中且未登录时才提示登录（远程 QQ/汽水不依赖酷狗登录）
+    if (cachedPath == null && !isRemote && !KugouApiClient().isLoggedIn) {
       onLoginRequired?.call();
       return;
     }
@@ -1859,6 +1863,28 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
         if (_audioService != null) {
           await _setUrlAndPlay(fileUri);
+        }
+      } else if (isRemote) {
+        final url = await _resolveRemoteDiscoveryUrl(_currentSong!);
+        if (url != null && url.isNotEmpty) {
+          _actualPlayingQuality = _audioQuality.value;
+          final resolvedSong = _currentSong!.copyWith(url: url);
+          _currentSong = resolvedSong;
+          _playlist[_currentIndex] = resolvedSong;
+          _isResolvingUrl = false;
+          notifyListeners();
+          if (_audioService != null) {
+            await _setUrlAndPlay(url);
+          }
+        } else {
+          _isResolvingUrl = false;
+          _resolveError = _resolveErrorText(_currentSong);
+          final failedSong = _currentSong!;
+          notifyListeners();
+          _showUnplayableSongDialog(failedSong);
+          if (_playlist.length > 1 && !failedSong.isLongAudio) {
+            await next(autoPlay: true);
+          }
         }
       } else {
         await _ensureApiServerReady();
@@ -1910,6 +1936,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _fetchClimaxData();
   }
 
+  Future<String?> _resolveRemoteDiscoveryUrl(Song song) async {
+    final source = song.source;
+    if (source == null) return null;
+    try {
+      return await DiscoveryApiClient().resolvePlayUrl(
+        source: source,
+        id: song.remoteTrackId,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _prefetchNextSongs(int startIndex) {
     final prefetchCount = 3;
     for (
@@ -1918,21 +1957,29 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       i++
     ) {
       final song = _playlist[i];
-      if (song.isOnline && song.url == null) {
-        KugouApiClient()
-            .getSongUrlWithFallback(
-              song.id,
-              quality: _audioQuality.value,
-              albumId: song.albumId,
-              albumAudioId: song.albumAudioId,
-            )
-            .then((result) {
-              if (result != null && result.url.isNotEmpty) {
-                _playlist[i] = song.copyWith(url: result.url);
-                _prefetchedUrlQuality[song.id] = result.quality;
-              }
-            });
+      if (!song.isOnline || song.url != null) continue;
+      if (song.isRemoteDiscovery) {
+        _resolveRemoteDiscoveryUrl(song).then((url) {
+          if (url != null && url.isNotEmpty) {
+            _playlist[i] = song.copyWith(url: url);
+            _prefetchedUrlQuality[song.id] = _audioQuality.value;
+          }
+        });
+        continue;
       }
+      KugouApiClient()
+          .getSongUrlWithFallback(
+            song.id,
+            quality: _audioQuality.value,
+            albumId: song.albumId,
+            albumAudioId: song.albumAudioId,
+          )
+          .then((result) {
+            if (result != null && result.url.isNotEmpty) {
+              _playlist[i] = song.copyWith(url: result.url);
+              _prefetchedUrlQuality[song.id] = result.quality;
+            }
+          });
     }
   }
 
@@ -2268,7 +2315,26 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           prefetchedQuality != _audioQuality.value;
       if (song.url == null || cachedUrlStale) {
         // URL 不存在，需要解析
-        if (!KugouApiClient().isLoggedIn) {
+        if (song.isRemoteDiscovery) {
+          _isResolvingUrl = true;
+          notifyListeners();
+          try {
+            final url = await _resolveRemoteDiscoveryUrl(song);
+            if (url != null && url.isNotEmpty) {
+              _actualPlayingQuality = _audioQuality.value;
+              _prefetchedUrlQuality[_currentSong!.id] = _audioQuality.value;
+              final resolvedSong = _currentSong!.copyWith(url: url);
+              _currentSong = resolvedSong;
+              _playlist[_currentIndex] = resolvedSong;
+            } else {
+              _isResolvingUrl = false;
+              return false;
+            }
+          } catch (e) {
+            _isResolvingUrl = false;
+            return false;
+          }
+        } else if (!KugouApiClient().isLoggedIn) {
           // 仅用户主动播放（play=true）才提示登录。play=false 是启动恢复等
           // 静默路径：启动早期登录 token 可能尚未从存储加载完成、本地服务器
           // 也未必就绪，此刻误判未登录会误弹「请先登录」。改为静默跳过，
@@ -2277,8 +2343,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
             onLoginRequired?.call();
           }
           return false;
-        }
-
+        } else {
         // 确保本地 API 服务器已启动（所有酷狗 API 走本地随机端口）
         // 冷启动时 MethodChannel 可能尚未注册，导致 KugouApiServer.start() 失败，
         // 此处做二次兜底检查，避免 API 请求因服务器未就绪而全部失败
@@ -2312,6 +2377,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         } catch (e) {
           _isResolvingUrl = false;
           return false;
+        }
         }
       } else {
         // URL 已存在（预取过），可选扩展：播放源开始后回调（默认关闭）
@@ -2386,7 +2452,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 不阻塞播放流程，失败时静默忽略。
   Future<void> _fetchClimaxData() async {
     final song = _currentSong;
-    if (song == null || !song.isOnline) return;
+    if (song == null || !song.isOnline || song.isRemoteDiscovery) return;
     if (song.climaxStart != null) return;
     try {
       final climax = await KugouApiClient().getSongClimax(

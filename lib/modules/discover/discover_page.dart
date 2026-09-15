@@ -9,6 +9,7 @@ import 'package:m3e_core/m3e_core.dart';
 import '../../widgets/md3_pull_to_refresh.dart';
 
 import '../../data/models/album.dart';
+import '../../providers/discover_source_provider.dart';
 import '../../providers/kugou_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../services/kugou_api/kugou_models.dart';
@@ -22,6 +23,8 @@ import '../personal_fm/personal_fm_section.dart';
 import '../playlist/playlist_page.dart';
 import '../recognition/song_recognition_page.dart';
 import '../search/search_page.dart';
+import 'remote_discover_body.dart';
+import 'remote_search_page.dart';
 
 /// 顶栏图标按钮（搜索 / 识曲）的尺寸：36 而不是 MD3 默认的 48，让两个图标之间
 /// 由 24dp 收到 12dp；纵向仍保留 40dp 触达高度。
@@ -77,6 +80,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initIfNeeded();
       _loadCollapseStates();
+      context.read<DiscoverSourceProvider>().load();
     });
   }
 
@@ -238,54 +242,106 @@ class _DiscoverPageState extends State<DiscoverPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final discoverSource = context.watch<DiscoverSourceProvider>();
+    final isKugou = discoverSource.isKugou;
 
     return Scaffold(
       appBar: ScrollAwareAppBar(
         title: '发现',
         tabId: 'discover',
-        scrollController: _scrollController,
+        scrollController: isKugou ? _scrollController : null,
         // 公开版偏好：无壁纸时顶部恒为不透明 surface（文字区稳定）；
         // 有壁纸时顶栏完全透明，壁纸透出与页面主体透明度上下一致
         opaque: true,
-        titleTrailing: _buildGreetingPill(colorScheme),
+        leading: _buildSourceSwitcher(discoverSource),
+        leadingWidth: 88,
+        titleTrailing: isKugou ? _buildGreetingPill(colorScheme) : null,
         actions: [
           _buildActionIcon(
             icon: Icons.search,
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const SearchPage())),
+            onPressed: () {
+              if (isKugou) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const SearchPage()),
+                );
+              } else {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RemoteSearchPage(source: discoverSource.source),
+                  ),
+                );
+              }
+            },
           ),
-          Padding(
-            padding: const EdgeInsets.only(right: _kActionTrailingGap),
-            child: _buildActionIcon(
-              icon: Icons.mic_outlined,
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SongRecognitionPage()),
+          if (isKugou)
+            Padding(
+              padding: const EdgeInsets.only(right: _kActionTrailingGap),
+              child: _buildActionIcon(
+                icon: Icons.mic_outlined,
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SongRecognitionPage(),
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
-      body: Md3PullToRefresh(
-        onRefresh: _loadAllData,
-        // 渐进加载：任一分区数据就绪即退出整页转圈，先显示已获取的分区；
-        // 未就绪分区由各自 Selector 在数据到达时自动补出（空数据返回占位）。
-        child: _isLoading && !_hasAnySectionData
-            ? const Center(child: M3ELoadingIndicator())
-            : _error != null && !_hasAnySectionData
-            ? _buildError(colorScheme)
-            : CustomScrollView(
-                controller: _scrollController,
-                slivers: [
-                  _buildPersonalFmSection(),
-                  _buildDailySection(colorScheme),
-                  _buildThemeMusicSection(colorScheme),
-                  _buildSceneSection(colorScheme),
-                  _buildPlaylistSection(colorScheme),
-                  _buildRankSection(colorScheme),
-                  const SliverToBoxAdapter(child: SizedBox(height: 80)),
-                ],
-              ),
+      body: isKugou
+          ? Md3PullToRefresh(
+              onRefresh: _loadAllData,
+              // 渐进加载：任一分区数据就绪即退出整页转圈，先显示已获取的分区；
+              // 未就绪分区由各自 Selector 在数据到达时自动补出（空数据返回占位）。
+              child: _isLoading && !_hasAnySectionData
+                  ? const Center(child: M3ELoadingIndicator())
+                  : _error != null && !_hasAnySectionData
+                  ? _buildError(colorScheme)
+                  : CustomScrollView(
+                      controller: _scrollController,
+                      slivers: [
+                        _buildPersonalFmSection(),
+                        _buildDailySection(colorScheme),
+                        _buildThemeMusicSection(colorScheme),
+                        _buildSceneSection(colorScheme),
+                        _buildPlaylistSection(colorScheme),
+                        _buildRankSection(colorScheme),
+                        const SliverToBoxAdapter(child: SizedBox(height: 80)),
+                      ],
+                    ),
+            )
+          : const RemoteDiscoverBody(),
+    );
+  }
+
+  /// 发现页左上角：酷狗 / QQ / 汽水。
+  Widget _buildSourceSwitcher(DiscoverSourceProvider ds) {
+    return PopupMenuButton<DiscoverMusicSource>(
+      tooltip: '切换音源',
+      offset: const Offset(0, kToolbarHeight - 8),
+      onSelected: ds.setSource,
+      itemBuilder: (context) => DiscoverMusicSource.values
+          .map(
+            (s) => CheckedPopupMenuItem<DiscoverMusicSource>(
+              value: s,
+              checked: ds.source == s,
+              child: Text(s.label),
+            ),
+          )
+          .toList(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              ds.source.label,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const Icon(Icons.arrow_drop_down, size: 20),
+          ],
+        ),
       ),
     );
   }
