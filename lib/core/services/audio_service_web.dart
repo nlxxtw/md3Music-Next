@@ -150,7 +150,7 @@ class AudioService {
     await _player.setShuffleModeEnabled(enabled);
   }
 
-  Future<void> setVolume(double volume) async {
+  Future<void> setVolume(double volume, {bool force = false}) async {
     await _player.setVolume(volume.clamp(0.0, 1.0));
   }
 

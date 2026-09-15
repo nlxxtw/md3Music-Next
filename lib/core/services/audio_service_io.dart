@@ -650,11 +650,11 @@ class AudioService {
   }
 
   /// 设置用户音量（0..1）。淡化斜坡以它为上限。
-  Future<void> setVolume(double volume) async {
+  Future<void> setVolume(double volume, {bool force = false}) async {
     _userVolume = volume.clamp(0.0, 1.0);
     // 淡化中不要打断斜坡：新音量在斜坡结束时自然生效
     // 叠加音量均衡的衰减倍率（响歌压低）
-    if (_crossfading) return;
+    if (_crossfading && !force) return;
     await _activePlayer.setVolume(_userVolume * _vnAttenLinear);
   }
 
@@ -1069,8 +1069,14 @@ Map<String, String>? _discoveryStreamHeaders(String url) {
   if (host.contains('douyinvod') ||
       host.contains('douyinpic') ||
       host.contains('bytevod') ||
+      host.contains('byteimg') ||
+      host.contains('ttcdn') ||
+      host.contains('pstatp') ||
+      host.contains('snssdk') ||
+      host.contains('bytedance') ||
       host.contains('qishui') ||
-      host.contains('luna')) {
+      host.contains('luna') ||
+      host.contains('tos-cn')) {
     return {'User-Agent': lunaUa, 'Referer': 'https://www.qishui.com/'};
   }
   return null;
