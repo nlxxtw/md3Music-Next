@@ -211,6 +211,7 @@ class MainActivity : FlutterActivity() {
         if (cached != null && cached.dartExecutor.isExecutingDart()) {
             // 宿主引擎复用路径：configureFlutterEngine 不保证执行，显式补注册 Lyrico 编辑插件
             try { ExternalEditorPlugin(this).register(cached) } catch (_: Throwable) {}
+            try { ApkInstallerPlugin(this).register(cached) } catch (_: Throwable) {}
             return cached
         }
         return super.provideFlutterEngine(context)
@@ -278,6 +279,9 @@ class MainActivity : FlutterActivity() {
 
             // 注册 Lyrico 外部编辑插件：本地歌曲经 FileProvider 交给 Lyrico 编辑
             ExternalEditorPlugin(this).register(flutterEngine)
+
+            // 应用内更新：下载 APK 后调起系统安装器
+            ApkInstallerPlugin(this).register(flutterEngine)
 
             // 注册 Miuix 发现页测试通道：Dart 设置页点击后打开原生 Compose + miuix 页面，
             // 并携带本地 Rust API 服务器当前端口（原生页据此直连取数）。

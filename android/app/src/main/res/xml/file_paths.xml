@@ -3,4 +3,7 @@
      本地音乐文件可能位于任意目录（Download / Music / 自定义目录等）。 -->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="external" path="."/>
+    <!-- 应用内更新：临时目录下载的 APK -->
+    <cache-path name="cache" path="."/>
+    <files-path name="files" path="."/>
 </paths>

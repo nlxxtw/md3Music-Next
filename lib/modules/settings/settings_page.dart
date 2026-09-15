@@ -2753,8 +2753,14 @@ class _SettingsPageState extends State<SettingsPage>
       final decision = await AppUpdateService.instance.evaluate();
       if (!mounted) return;
       if (decision == null) {
-        showToast('检查失败，正在打开下载页…');
-        final ok = await AppUpdateService.instance.openUpdateUrl();
+        showToast('检查失败，正在打开加速下载…');
+        final ok = await AppUpdateService.instance.openUpdateUrl(
+          skipRemoteLookup: true,
+          overrideUrl: GithubAccel.wrap(
+            'https://github.com/nlxxtw/md3Music-Next/releases/latest',
+          ),
+          preferAccelApk: false,
+        );
         if (mounted && !ok) {
           showToast('无法打开浏览器，请手动访问 GitHub Releases', long: true);
         }
@@ -2770,8 +2776,14 @@ class _SettingsPageState extends State<SettingsPage>
       await AppUpdateService.showUpdateDialog(context, decision);
     } catch (e) {
       if (!mounted) return;
-      showToast('检查失败：$e，尝试打开下载页…', long: true);
-      final ok = await AppUpdateService.instance.openUpdateUrl();
+      showToast('检查失败，正在打开加速下载…');
+      final ok = await AppUpdateService.instance.openUpdateUrl(
+        skipRemoteLookup: true,
+        overrideUrl: GithubAccel.wrap(
+          'https://github.com/nlxxtw/md3Music-Next/releases/latest',
+        ),
+        preferAccelApk: false,
+      );
       if (mounted && !ok) {
         showToast('无法打开浏览器，请手动访问 GitHub Releases', long: true);
       }
