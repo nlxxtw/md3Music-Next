@@ -307,7 +307,8 @@ class QishuiDecrypt {
   static List<int> _sampleSizes(_Box stsz) {
     final fixed = _u32(stsz.body, 4);
     final count = _u32(stsz.body, 8);
-    if (count > 200000 || (!fixed && 12 + count * 4 > stsz.body.length)) {
+    // JS 里 !fixed 把 0 当假；Dart 的 ! 是空断言，int 不能当 bool。
+    if (count > 200000 || (fixed == 0 && 12 + count * 4 > stsz.body.length)) {
       throw StateError('汽水音频样本数据无效');
     }
     if (fixed != 0) {
