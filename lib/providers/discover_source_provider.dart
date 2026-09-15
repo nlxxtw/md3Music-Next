@@ -70,11 +70,17 @@ class DiscoverSourceProvider extends ChangeNotifier {
     if (_source == next) return;
     _source = next;
     _error = null;
+    // 立刻清空，避免 QQ→汽水 仍显示旧列表，看起来像「要手动刷新」
+    _playlists = const [];
+    _toplists = const [];
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, next.name);
     if (!isKugou) {
       await refreshRemote();
+    } else {
+      _loading = false;
+      notifyListeners();
     }
   }
 
@@ -87,16 +93,18 @@ class DiscoverSourceProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final playlists = await _client.getRecommend(apiSource);
-      List<DiscoveryToplist> toplists = const [];
-      try {
-        toplists = await _client.getToplists(source: apiSource);
-      } catch (_) {
-        toplists = const [];
-      }
+      final playlistsFuture = _client.getRecommend(apiSource);
+      final toplistsFuture = () async {
+        try {
+          return await _client.getToplists(source: apiSource);
+        } catch (_) {
+          return const <DiscoveryToplist>[];
+        }
+      }();
+      final results = await Future.wait([playlistsFuture, toplistsFuture]);
       if (_source.apiSource == apiSource) {
-        _playlists = playlists;
-        _toplists = toplists;
+        _playlists = results[0] as List<DiscoveryPlaylist>;
+        _toplists = results[1] as List<DiscoveryToplist>;
       }
     } catch (e) {
       if (_source.apiSource == apiSource) {

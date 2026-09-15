@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../data/models/song.dart';
+import 'qqovo_resolver.dart';
 
 /// musicdl 云端发现 API（推荐 / 排行 / 歌单详情 / 解析播放）。
 class DiscoveryApiClient {
@@ -104,7 +106,7 @@ class DiscoveryApiClient {
     );
   }
 
-  /// 解析可播 URL（服务端需提供 `/api/v1/resolve`；未部署时返回 null）。
+  /// 解析可播 URL（服务端需提供 `/api/v1/resolve`；失败时 qqovo 兜底）。
   Future<String?> resolvePlayUrl({
     required String source,
     required String id,
@@ -122,19 +124,30 @@ class DiscoveryApiClient {
         ),
       );
       final data = res.data;
-      if (data is! Map) return null;
-      var url = data['url']?.toString();
-      // Android 禁明文；QQ CDN https 可用，强制升格。
-      if (url != null && url.startsWith('http://')) {
-        url = 'https://${url.substring(7)}';
+      if (data is Map) {
+        var url = data['url']?.toString();
+        // Android 禁明文；QQ CDN https 可用，强制升格。
+        if (url != null && url.startsWith('http://')) {
+          url = 'https://${url.substring(7)}';
+        }
+        if (url != null && url.startsWith('http')) return url;
+        debugPrint('[DiscoveryApi] resolve empty source=$source id=$id '
+            'status=${res.statusCode} error=${data['error']}');
       }
-      if (url != null && url.startsWith('http')) return url;
-      // ignore: avoid_print
-      print('[DiscoveryApi] resolve empty source=$source id=$id '
-          'status=${res.statusCode} error=${data['error']}');
     } catch (e) {
-      // ignore: avoid_print
-      print('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
+      debugPrint('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
+    }
+
+    // 云端失败：客户端直连 qqovo（VIP QQ / 汽水整曲）
+    if (source == 'qq') {
+      return QqovoResolver().resolve(server: 'tencent', id: id);
+    }
+    if (source == 'soda') {
+      return QqovoResolver().resolve(
+        server: 'qishui',
+        id: id,
+        qualities: const ['exhigh', 'higher', 'standard'],
+      );
     }
     return null;
   }

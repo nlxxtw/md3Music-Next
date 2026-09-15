@@ -636,6 +636,11 @@ class AudioService {
     // 不要传空 Map：ExoPlayer 会把它当成「覆盖默认头」，导致无 User-Agent，
     // QQ / 汽水 CDN 常因此拒播。null = 保留播放器默认请求头。
     final effectiveHeaders = headers ?? _discoveryStreamHeaders(url);
+    // 发现直链无可靠响度元数据，避免沿用上一首的均衡状态把声音压没
+    if (effectiveHeaders != null) {
+      _vnLufs = null;
+      _vnPeakDb = null;
+    }
     if (effectiveHeaders == null) {
       await _activePlayer.setUrl(url);
     } else {
@@ -1047,21 +1052,26 @@ UriAudioSource createAudioSource({
 Map<String, String>? _discoveryStreamHeaders(String url) {
   final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
   if (host.isEmpty) return null;
-  const ua =
+  const chromeUa =
       'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) '
       'Chrome/120.0.0.0 Mobile Safari/537.36';
+  // 汽水 CDN 对浏览器 UA 常出「能播无声」；用 Luna 客户端 UA 更稳
+  const lunaUa =
+      'com.luna.music/100198030 (Linux; U; Android 15; zh_CN_#Hans; '
+      'ABR-AL80; Build/V417IR;tt-ok/3.12.13.19)';
   if (host.contains('qqmusic') ||
       host.contains('tencentmusic') ||
+      host.contains('aqqmusic') ||
       host.endsWith('.qq.com') ||
       host.contains('gtimg')) {
-    return {'User-Agent': ua, 'Referer': 'https://y.qq.com/'};
+    return {'User-Agent': chromeUa, 'Referer': 'https://y.qq.com/'};
   }
   if (host.contains('douyinvod') ||
       host.contains('douyinpic') ||
       host.contains('bytevod') ||
       host.contains('qishui') ||
       host.contains('luna')) {
-    return {'User-Agent': ua, 'Referer': 'https://www.qishui.com/'};
+    return {'User-Agent': lunaUa, 'Referer': 'https://www.qishui.com/'};
   }
   return null;
 }

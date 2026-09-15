@@ -32,6 +32,16 @@ class DiscoveryCoverImage extends StatelessWidget {
         'Referer': 'https://www.qishui.com/',
       };
     }
+    if (host.contains('qq.com') ||
+        host.contains('gtimg') ||
+        host.contains('qpic')) {
+      return {
+        'User-Agent':
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Referer': 'https://y.qq.com/',
+      };
+    }
     return null;
   }
 

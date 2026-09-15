@@ -225,6 +225,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 解析必然失败——用更明确的文案提示用户，而不是通用的"无法获取播放链接"。
   String _resolveErrorText(Song? song) {
     if (song?.isLongAudio ?? false) return '该章节为 听书VIP单独付费内容';
+    if (song?.isRemoteDiscovery ?? false) {
+      return '无法获取播放链接（可能是付费/无音质曲目）';
+    }
     return '无法获取播放链接';
   }
 
@@ -2147,6 +2150,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       loudnessLufs: _currentSong?.loudnessLufs,
       loudnessPeakDb: _currentSong?.loudnessPeakDb,
     );
+    // 直链加载后若音量被置 0（交叉淡化/焦点残留），拉回可听音量
+    if (_currentSong?.isRemoteDiscovery == true) {
+      final v = _audioService.player.volume;
+      if (v < 0.05) {
+        await _audioService.setVolume(1.0);
+      }
+    }
     final deadline = DateTime.now().add(const Duration(seconds: 10));
     while (DateTime.now().isBefore(deadline)) {
       final state = _audioService.player.playerState;
@@ -3250,7 +3260,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       context: ctx,
       builder: (dialogCtx) => AlertDialog(
         title: const Text('歌曲无法播放'),
-        content: Text('「${song.displayName}」暂时无法播放，将切换到下一首'),
+        content: Text(
+          song.isRemoteDiscovery
+              ? '「${song.displayName}」暂无可用音源（部分 VIP/付费专辑无法解析），将切换到下一首'
+              : '「${song.displayName}」暂时无法播放，将切换到下一首',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogCtx),
