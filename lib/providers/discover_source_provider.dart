@@ -89,12 +89,10 @@ class DiscoverSourceProvider extends ChangeNotifier {
     try {
       final playlists = await _client.getRecommend(apiSource);
       List<DiscoveryToplist> toplists = const [];
-      if (apiSource == 'qq') {
-        try {
-          toplists = await _client.getToplists();
-        } catch (_) {
-          toplists = const [];
-        }
+      try {
+        toplists = await _client.getToplists(source: apiSource);
+      } catch (_) {
+        toplists = const [];
       }
       if (_source.apiSource == apiSource) {
         _playlists = playlists;

@@ -42,7 +42,10 @@ class _RemoteToplistPageState extends State<RemoteToplistPage> {
     });
     try {
       final client = context.read<DiscoverSourceProvider>().client;
-      final songs = await client.getToplistSongs(widget.toplist.id);
+      final songs = await client.getToplistSongs(
+        widget.toplist.id,
+        source: widget.toplist.source,
+      );
       if (!mounted) return;
       setState(() {
         _songs = songs;

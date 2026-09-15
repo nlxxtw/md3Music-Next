@@ -14,7 +14,7 @@ class DiscoveryApiClient {
             ));
 
   /// 默认云端地址（可在设置里覆盖）。
-  static const String defaultBaseUrl = 'http://music.20262050.xyz';
+  static const String defaultBaseUrl = 'https://music.20262050.xyz';
 
   final String baseUrl;
   final Dio _dio;
@@ -56,24 +56,31 @@ class DiscoveryApiClient {
     return const [];
   }
 
-  Future<List<DiscoveryToplist>> getToplists() async {
+  Future<List<DiscoveryToplist>> getToplists({String source = 'qq'}) async {
     final res = await _dio.get('$baseUrl/api/v1/toplist', queryParameters: {
-      'source': 'qq',
+      'source': source,
     });
     final list = (res.data['toplists'] as List?) ?? const [];
     return list
         .whereType<Map>()
-        .map((e) => DiscoveryToplist.fromJson(Map<String, dynamic>.from(e)))
+        .map((e) => DiscoveryToplist.fromJson(
+              Map<String, dynamic>.from(e),
+              source: source,
+            ))
         .toList();
   }
 
-  Future<List<Song>> getToplistSongs(String id, {int num = 50}) async {
+  Future<List<Song>> getToplistSongs(
+    String id, {
+    String source = 'qq',
+    int num = 50,
+  }) async {
     final res = await _dio.get('$baseUrl/api/v1/toplist/songs',
-        queryParameters: {'source': 'qq', 'id': id, 'num': num});
+        queryParameters: {'source': source, 'id': id, 'num': num});
     final list = (res.data['songs'] as List?) ?? const [];
     return list
         .whereType<Map>()
-        .map((e) => songFromDiscovery(Map<String, dynamic>.from(e), 'qq'))
+        .map((e) => songFromDiscovery(Map<String, dynamic>.from(e), source))
         .toList();
   }
 
@@ -107,7 +114,11 @@ class DiscoveryApiClient {
         'source': source,
         'id': id,
       });
-      final url = res.data['url']?.toString();
+      var url = res.data['url']?.toString();
+      // Android 禁明文；QQ CDN https 可用，强制升格。
+      if (url != null && url.startsWith('http://')) {
+        url = 'https://${url.substring(7)}';
+      }
       if (url != null && url.startsWith('http')) return url;
     } catch (_) {}
     return null;
@@ -151,20 +162,26 @@ class DiscoveryToplist {
   final String name;
   final String cover;
   final String group;
+  final String source;
 
   const DiscoveryToplist({
     required this.id,
     required this.name,
     required this.cover,
     required this.group,
+    this.source = 'qq',
   });
 
-  factory DiscoveryToplist.fromJson(Map<String, dynamic> json) {
+  factory DiscoveryToplist.fromJson(
+    Map<String, dynamic> json, {
+    String source = 'qq',
+  }) {
     return DiscoveryToplist(
       id: '${json['id'] ?? ''}',
       name: '${json['name'] ?? ''}',
       cover: '${json['cover'] ?? ''}',
       group: '${json['group'] ?? ''}',
+      source: '${json['source'] ?? source}',
     );
   }
 }
@@ -172,15 +189,18 @@ class DiscoveryToplist {
 Song songFromDiscovery(Map<String, dynamic> json, String source) {
   final rawId = '${json['id'] ?? ''}';
   final durationSec = (json['duration'] as num?)?.toInt() ?? 0;
+  final coverRaw = (json['cover'] as String?)?.trim() ?? '';
+  // Luna 曾返回残缺前缀 …/img/，不当作有效封面
+  final cover = (coverRaw.isNotEmpty && !coverRaw.endsWith('/img/') && !coverRaw.endsWith('/img'))
+      ? coverRaw
+      : null;
   return Song(
     id: '$source:$rawId',
     title: '${json['name'] ?? ''}',
     artist: '${json['artist'] ?? ''}',
     album: '${json['album'] ?? ''}',
     duration: Duration(seconds: durationSec > 0 ? durationSec : 0),
-    artworkUri: (json['cover'] as String?)?.isNotEmpty == true
-        ? json['cover'] as String
-        : null,
+    artworkUri: cover,
     isOnline: true,
     albumId: json['album_id']?.toString(),
     source: source,
