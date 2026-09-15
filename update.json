@@ -1,11 +1,11 @@
 {
   "latestVersion": "13.3.12",
-  "latestBuild": 3008,
+  "latestBuild": 3009,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": true,
   "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.12",
   "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.12/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "重要更新，请立即安装。包含：强制更新、换源歌词闸门、单曲循环可切歌、酷狗翻译回退、播放页防重复打开。"
+  "message": "MD3Music v13.3.12 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
 }
