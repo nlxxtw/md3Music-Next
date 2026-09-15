@@ -113,12 +113,13 @@ class AppUpdateService {
     'Accept': '*/*',
   };
 
-  /// 主源 + 国内加速镜像（fuck123 优先）。
+  /// 多镜像拉取后取「最高版本」（勿用 Future.any：jsDelivr 常缓存旧版，
+  /// 会把已装新版的手机误判成「已是最新」）。
   static const configUrls = <String>[
-    'https://github.fuck123.de5.net/https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
-    'https://cdn.jsdelivr.net/gh/nlxxtw/md3Music-Next@main/update.json',
-    'https://ghproxy.net/https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
     'https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
+    'https://ghproxy.net/https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
+    'https://cdn.jsdelivr.net/gh/nlxxtw/md3Music-Next@main/update.json',
+    'https://github.fuck123.de5.net/https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
   ];
 
   static const fallbackReleaseUrl =
@@ -218,37 +219,38 @@ class AppUpdateService {
   Future<AppUpdateInfo?> _fetchInfo() async {
     final stamp = '${DateTime.now().millisecondsSinceEpoch}';
     final futures = configUrls.map((base) async {
-      final uri = Uri.parse(base).replace(queryParameters: {'t': stamp});
-      final resp = await http
-          .get(uri, headers: _browserHeaders)
-          .timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) {
-        throw StateError('HTTP ${resp.statusCode} $base');
-      }
-      final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
-      if (decoded is! Map) throw StateError('bad json $base');
-      return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
-    }).toList();
-
-    try {
-      return await Future.any(futures);
-    } catch (_) {
-      for (final base in configUrls) {
-        try {
-          final uri = Uri.parse(base).replace(queryParameters: {'t': stamp});
-          final resp = await http
-              .get(uri, headers: _browserHeaders)
-              .timeout(const Duration(seconds: 10));
-          if (resp.statusCode != 200) continue;
-          final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
-          if (decoded is! Map) continue;
-          return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
-        } catch (e) {
-          debugPrint('AppUpdateService fetch miss $base: $e');
+      try {
+        final uri = Uri.parse(base).replace(queryParameters: {'t': stamp});
+        final resp = await http
+            .get(uri, headers: _browserHeaders)
+            .timeout(const Duration(seconds: 8));
+        if (resp.statusCode != 200) {
+          throw StateError('HTTP ${resp.statusCode}');
         }
+        final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+        if (decoded is! Map) throw StateError('bad json');
+        return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
+      } catch (e) {
+        debugPrint('AppUpdateService fetch miss $base: $e');
+        return null;
+      }
+    });
+
+    final results = await Future.wait(futures);
+    AppUpdateInfo? best;
+    for (final info in results) {
+      if (info == null) continue;
+      if (best == null ||
+          _isOlder(
+            best.latestVersion,
+            best.latestBuild,
+            info.latestVersion,
+            info.latestBuild,
+          )) {
+        best = info;
       }
     }
-    return null;
+    return best;
   }
 
   /// 经加速节点下载 APK 并调起系统安装器。
