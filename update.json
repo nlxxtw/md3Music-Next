@@ -1,11 +1,11 @@
 {
   "latestVersion": "13.3.16",
-  "latestBuild": 3013,
+  "latestBuild": 3014,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": true,
   "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.16",
   "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.16/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "汽水解密对齐 OpenMusic（重建容器/FLAC）；修复更新检测被旧镜像误判为已最新。"
+  "message": "MD3Music v13.3.16 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
 }
