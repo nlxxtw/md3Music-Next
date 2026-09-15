@@ -18,6 +18,8 @@ analyzer:
     - android/**
     - web/**
     - windows/**
+    # 公开树不含 gen_settings_search_index.dart（私有导出脚本）
+    - test/modules/settings/settings_search_index_test.dart
 
 linter:
   # The lint rules applied to this project can be customized in the

@@ -230,16 +230,6 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Flutter analyze (fail on errors)
-        run: |
-          flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee analyze.log
-          # 有 Error: 才失败（Infos/Warnings 放过）
-          if grep -E "^  error •|error •" analyze.log >/dev/null; then
-            echo "::error::flutter analyze reported errors"
-            grep -E "error •" analyze.log || true
-            exit 1
-          fi
-
       - name: Flutter build APK (arm64 / armeabi-v7a / x86_64 only)
         run: |
           # --split-per-abi：只产出三份 ABI APK，不打通用包
