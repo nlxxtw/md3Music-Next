@@ -283,14 +283,14 @@ class AppUpdateService {
                   children: [
                     Text(
                       pct == null
-                          ? '连接加速节点…'
+                          ? '正在连接…'
                           : '已下载 ${pct.toStringAsFixed(0)}%',
                     ),
                     const SizedBox(height: 12),
                     LinearProgressIndicator(value: p),
                     const SizedBox(height: 8),
                     Text(
-                      '经 github.fuck123.de5.net 加速\n${info.latestVersion}',
+                      info.latestVersion,
                       style: Theme.of(ctx).textTheme.bodySmall,
                     ),
                   ],
@@ -427,8 +427,7 @@ class AppUpdateService {
             content: Text(
               '${info.message}\n\n'
               '当前：${decision.currentVersion} (${decision.currentBuild})\n'
-              '最新：${info.latestVersion} (${info.latestBuild})\n\n'
-              '将经国内 GitHub 加速下载安装。',
+              '最新：${info.latestVersion} (${info.latestBuild})',
             ),
             actions: [
               if (!force)

@@ -42,6 +42,10 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:networkSecurityConfig="@xml/network_security_config">
+        <!-- 原子随身听（vivomusicmix）合作应用认证（上游 v5.6 / 酷我同款 meta）。 -->
+        <meta-data android:name="support_vivo_musicwidgetmix_value" android:value="1001" />
+        <meta-data android:name="support_vivo_musicwidgetmix_token" android:value="81ed19dacbe2c11fa52a129e3815037c62abc5aee1d5a39f9240c35a09e07eb2" />
+        <meta-data android:name="support_vivo_musicwidgetmix_logo_color" android:value="\#00FFFF\#FFFFFF" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -100,9 +104,12 @@
         <service
             android:name=".MD3MusicMediaSessionService"
             android:foregroundServiceType="mediaPlayback"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.vivo.musicwidgetmix.support.service" />
             </intent-filter>
         </service>
         <service

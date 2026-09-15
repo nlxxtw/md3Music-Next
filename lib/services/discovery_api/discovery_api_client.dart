@@ -113,6 +113,10 @@ class DiscoveryApiClient {
     required String id,
   }) async {
     if (source == 'netease') {
+      final official = await _neteaseOfficialPlaylist(id);
+      if (official.songs.isNotEmpty || official.playlist != null) {
+        return official;
+      }
       return _playlistViaQqovo(server: 'netease', source: source, id: id);
     }
     final res = await _dio.get('$baseUrl/api/v1/playlist/detail',
@@ -200,8 +204,8 @@ class DiscoveryApiClient {
 
     if (url == null) return null;
     if (source == 'soda' && !kIsWeb) {
-      final local = await _materializeSodaStream(url, id, auth: sodaAuth);
-      if (local != null) return local;
+      // 必须解密成本地可播文件；失败绝不能回退密文 CDN（有进度无声）。
+      return _materializeSodaStream(url, id, auth: sodaAuth);
     }
     return url;
   }
@@ -327,11 +331,7 @@ class DiscoveryApiClient {
     ];
     final details = await Future.wait(charts.map((c) async {
       try {
-        return await _playlistViaQqovo(
-          server: 'netease',
-          source: 'netease',
-          id: c.$1,
-        );
+        return await _neteaseOfficialPlaylist(c.$1, nameHint: c.$2);
       } catch (_) {
         return (playlist: null, songs: const <Song>[]);
       }
@@ -359,11 +359,7 @@ class DiscoveryApiClient {
     ];
     final details = await Future.wait(ids.map((c) async {
       try {
-        return await _playlistViaQqovo(
-          server: 'netease',
-          source: 'netease',
-          id: c.$1,
-        );
+        return await _neteaseOfficialPlaylist(c.$1, nameHint: c.$2);
       } catch (_) {
         return (playlist: null, songs: const <Song>[]);
       }
@@ -372,17 +368,123 @@ class DiscoveryApiClient {
     for (var i = 0; i < ids.length; i++) {
       final pl = details[i].playlist;
       if (pl == null) continue;
+      // 无封面也保留入口，点进去仍可拉歌
       out.add(DiscoveryPlaylist(
         id: ids[i].$1,
         name: ids[i].$2,
         cover: pl.cover,
-        trackCount: pl.trackCount,
-        playCount: 0,
-        creator: '网易云',
+        trackCount: pl.trackCount > 0 ? pl.trackCount : details[i].songs.length,
+        playCount: pl.playCount,
+        creator: pl.creator.isNotEmpty ? pl.creator : '网易云',
         source: 'netease',
       ));
     }
     return out;
+  }
+
+  /// 网易云公开歌单详情（不依赖 qqovo playlist，封面/曲目更稳）。
+  Future<({DiscoveryPlaylist? playlist, List<Song> songs})>
+      _neteaseOfficialPlaylist(String id, {String? nameHint}) async {
+    try {
+      final res = await _dio.get(
+        'https://music.163.com/api/v6/playlist/detail',
+        queryParameters: {'id': id, 'n': 100, 's': 8},
+        options: Options(
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Referer': 'https://music.163.com/',
+            'Accept': 'application/json',
+          },
+          validateStatus: (code) => code != null && code < 500,
+        ),
+      );
+      final data = res.data;
+      if (data is! Map) {
+        return (playlist: null, songs: const <Song>[]);
+      }
+      final pl = data['playlist'];
+      if (pl is! Map) {
+        return (playlist: null, songs: const <Song>[]);
+      }
+      final cover = '${pl['coverImgUrl'] ?? pl['picUrl'] ?? ''}'.trim();
+      final name = '${pl['name'] ?? nameHint ?? '歌单 $id'}'.trim();
+      final creatorMap = pl['creator'];
+      final creator = creatorMap is Map
+          ? '${creatorMap['nickname'] ?? ''}'
+          : '';
+      final trackCount = (pl['trackCount'] as num?)?.toInt() ?? 0;
+      final playCount = (pl['playCount'] as num?)?.toInt() ?? 0;
+
+      final tracks = <Map>[];
+      final tracksArr = pl['tracks'];
+      if (tracksArr is List) {
+        tracks.addAll(tracksArr.whereType<Map>());
+      }
+      if (tracks.isEmpty) {
+        final idsArr = pl['trackIds'];
+        if (idsArr is List) {
+          // 只有 id 列表时，至少先返回空曲目+封面，详情页可再解
+          for (final t in idsArr.take(50)) {
+            if (t is Map && t['id'] != null) {
+              tracks.add({'id': t['id'], 'name': '', 'ar': const []});
+            }
+          }
+        }
+      }
+
+      final songs = <Song>[];
+      for (final t in tracks) {
+        final tid = '${t['id'] ?? ''}'.trim();
+        if (tid.isEmpty) continue;
+        final ar = t['ar'] ?? t['artists'];
+        final artist = ar is List
+            ? ar
+                .map((e) => e is Map ? '${e['name'] ?? ''}' : '$e')
+                .where((s) => s.isNotEmpty)
+                .join(' / ')
+            : '${t['artist'] ?? ''}';
+        final al = t['al'] ?? t['album'];
+        final album = al is Map ? '${al['name'] ?? ''}' : '${t['album'] ?? ''}';
+        var pic = '';
+        if (al is Map) pic = '${al['picUrl'] ?? ''}';
+        if (pic.isEmpty) pic = '${t['album_pic'] ?? t['pic'] ?? ''}';
+        final dt = t['dt'];
+        final durationMs = dt is num ? dt.toInt() : 0;
+        final title = '${t['name'] ?? ''}'.trim();
+        if (title.isEmpty && pic.isEmpty) {
+          // 仅有 id 的占位不展示为可播项
+          continue;
+        }
+        songs.add(Song(
+          id: 'netease:$tid',
+          title: title.isEmpty ? '未知歌曲' : title,
+          artist: artist,
+          album: album,
+          duration: Duration(milliseconds: durationMs),
+          artworkUri: pic.isEmpty ? (cover.isEmpty ? null : cover) : pic,
+          isOnline: true,
+          source: 'netease',
+        ));
+      }
+
+      return (
+        playlist: DiscoveryPlaylist(
+          id: id,
+          name: name,
+          cover: cover,
+          trackCount: trackCount > 0 ? trackCount : songs.length,
+          playCount: playCount,
+          creator: creator,
+          source: 'netease',
+        ),
+        songs: songs,
+      );
+    } catch (e) {
+      debugPrint('[DiscoveryApi] netease playlist $id failed: $e');
+      return (playlist: null, songs: const <Song>[]);
+    }
   }
 
   Song _songFromMeting(Map<String, dynamic> raw, String source) {

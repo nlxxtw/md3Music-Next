@@ -28,7 +28,8 @@ android {
 
 
     defaultConfig {
-        applicationId = "com.salt.music"
+        // Vivo 原子随身听按包名识别合作应用；用户确认无需保留 com.salt.music。
+        applicationId = "com.apple.android.music"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = flutter.versionCode

@@ -2753,7 +2753,7 @@ class _SettingsPageState extends State<SettingsPage>
       final decision = await AppUpdateService.instance.evaluate();
       if (!mounted) return;
       if (decision == null) {
-        showToast('检查失败，正在打开加速下载…');
+        showToast('检查失败，正在打开下载页…');
         final ok = await AppUpdateService.instance.openUpdateUrl(
           skipRemoteLookup: true,
           overrideUrl: GithubAccel.wrap(
@@ -2776,7 +2776,7 @@ class _SettingsPageState extends State<SettingsPage>
       await AppUpdateService.showUpdateDialog(context, decision);
     } catch (e) {
       if (!mounted) return;
-      showToast('检查失败，正在打开加速下载…');
+      showToast('检查失败，正在打开下载页…');
       final ok = await AppUpdateService.instance.openUpdateUrl(
         skipRemoteLookup: true,
         overrideUrl: GithubAccel.wrap(
