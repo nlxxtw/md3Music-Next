@@ -7,7 +7,7 @@ import '../../providers/discover_source_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../widgets/song_list_item.dart';
 
-/// QQ / 汽水搜索：只拉元数据（与 go-music-dl 同思路），点播再走 `/resolve`。
+/// QQ / 汽水 / 网易云搜索：列表先出，点播再解析直链。
 class RemoteSearchPage extends StatefulWidget {
   final DiscoverMusicSource source;
 
@@ -119,7 +119,7 @@ class _RemoteSearchPageState extends State<RemoteSearchPage> {
     if (_query.isEmpty) {
       return Center(
         child: Text(
-          '输入关键词搜索（仅元数据，秒出结果）',
+          '输入关键词搜索',
           style: TextStyle(color: cs.onSurfaceVariant),
         ),
       );

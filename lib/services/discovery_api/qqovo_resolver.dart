@@ -86,18 +86,22 @@ class QqovoResolver {
   Future<dynamic> meting({
     required String server,
     required String type,
-    required String id,
+    String id = '',
     String? quality,
   }) async {
     final songId = id.trim();
-    if (songId.isEmpty) return null;
+    // fm / recommend 类接口可不带 id；其它类型仍要求 id。
+    if (songId.isEmpty && type != 'fm') return null;
     for (final base in _bases) {
       try {
         final session = await _ensureSession(base);
         if (session == null) continue;
-        final q = quality == null ? '' : '&quality=$quality';
+        final q = quality == null ? '' : '&quality=${Uri.encodeQueryComponent(quality)}';
+        final idPart = songId.isEmpty
+            ? ''
+            : '&id=${Uri.encodeQueryComponent(songId)}';
         final url =
-            '$base/api/meting?server=$server&type=$type&id=$songId$q';
+            '$base/api/meting?server=$server&type=$type$idPart$q';
         final resp = await _dio.get(
           url,
           options: Options(
@@ -117,6 +121,40 @@ class QqovoResolver {
       }
     }
     return null;
+  }
+
+  /// OpenMusic 平台热榜：`GET /api/music/hot`（全站点播完成次数，需签名会话）。
+  Future<List<Map<String, dynamic>>> getPlatformHot({int limit = 50}) async {
+    final n = limit.clamp(1, 100);
+    for (final base in _bases) {
+      try {
+        final session = await _ensureSession(base);
+        if (session == null) continue;
+        final url = '$base/api/music/hot?limit=$n';
+        final resp = await _dio.get(
+          url,
+          options: Options(
+            headers: _signedHeaders(base, url, session.key),
+            validateStatus: (c) => c != null && c < 500,
+          ),
+        );
+        if (resp.statusCode == 403) {
+          _sessions.remove(base);
+          await _cookieJar.delete(Uri.parse(base));
+          continue;
+        }
+        final data = resp.data;
+        if (data is! List) continue;
+        return data
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      } catch (e) {
+        debugPrint('[QqovoResolver] platform hot failed: $e');
+        _sessions.remove(base);
+      }
+    }
+    return const [];
   }
 
   Future<String?> resolve({

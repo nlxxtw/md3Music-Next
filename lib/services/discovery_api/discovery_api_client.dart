@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../data/models/song.dart';
+import 'fm_modes.dart';
 import 'qishui_decrypt.dart';
 import 'qqovo_resolver.dart';
 
@@ -81,18 +82,65 @@ class DiscoveryApiClient {
     return const [];
   }
 
+  /// qqovo OpenMusic 全站「平台热榜」虚拟榜单 id（挂在 QQ 发现页第一位）。
+  static const platformHotToplistId = 'qqovo-platform-hot';
+
   Future<List<DiscoveryToplist>> getToplists({String source = 'qq'}) async {
     if (source == 'netease') return _neteaseToplists();
     final res = await _dio.get('$baseUrl/api/v1/toplist', queryParameters: {
       'source': source,
     });
     final list = (res.data['toplists'] as List?) ?? const [];
-    return list
+    final charts = list
         .whereType<Map>()
         .map((e) => DiscoveryToplist.fromJson(
               Map<String, dynamic>.from(e),
               source: source,
             ))
+        .toList();
+    if (source != 'qq') return charts;
+
+    var cover = '';
+    try {
+      final hot = await QqovoResolver().getPlatformHot(limit: 1);
+      if (hot.isNotEmpty) {
+        cover = _httpsify('${hot.first['pic'] ?? ''}');
+      }
+    } catch (e) {
+      debugPrint('[DiscoveryApi] platform hot cover miss: $e');
+    }
+    return [
+      DiscoveryToplist(
+        id: platformHotToplistId,
+        name: '平台热榜',
+        cover: cover,
+        group: 'OpenMusic',
+        source: 'qq',
+      ),
+      ...charts,
+    ];
+  }
+
+  /// 私人漫游（qqovo `type=fm`；网易/汽水模式作 `id`，对齐 OpenMusic）。
+  Future<List<Song>> getFmSongs(String source, {String mode = 'DEFAULT'}) async {
+    final server = switch (source) {
+      'qq' => 'tencent',
+      'soda' => 'qishui',
+      'netease' => 'netease',
+      _ => '',
+    };
+    if (server.isEmpty) return const [];
+    final modeId = FmModes.metingId(mode, source);
+    final data = await QqovoResolver().meting(
+      server: server,
+      type: 'fm',
+      id: modeId ?? '',
+    );
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => _songFromMeting(Map<String, dynamic>.from(e), source))
+        .where((s) => s.remoteTrackId.isNotEmpty)
         .toList();
   }
 
@@ -101,6 +149,9 @@ class DiscoveryApiClient {
     String source = 'qq',
     int num = 50,
   }) async {
+    if (id == platformHotToplistId) {
+      return _platformHotSongs(num: num);
+    }
     if (source == 'netease') {
       final detail = await getPlaylistDetail(source: source, id: id);
       return detail.songs.take(num).toList();
@@ -112,6 +163,45 @@ class DiscoveryApiClient {
         .whereType<Map>()
         .map((e) => songFromDiscovery(Map<String, dynamic>.from(e), source))
         .toList();
+  }
+
+  Future<List<Song>> _platformHotSongs({int num = 50}) async {
+    final raw = await QqovoResolver().getPlatformHot(limit: num);
+    return raw
+        .map(_songFromPlatformHot)
+        .where((s) => s.remoteTrackId.isNotEmpty)
+        .toList();
+  }
+
+  Song _songFromPlatformHot(Map<String, dynamic> raw) {
+    final apiSource = '${raw['source'] ?? 'tencent'}'.trim();
+    final appSource = switch (apiSource) {
+      'tencent' => 'qq',
+      'qishui' => 'soda',
+      'netease' => 'netease',
+      'kugou' => 'kugou',
+      _ => 'qq',
+    };
+    final id = '${raw['id'] ?? ''}'.trim();
+    final durationRaw = raw['duration'];
+    var durationSec = 0;
+    if (durationRaw is num) {
+      durationSec = durationRaw > 10000
+          ? (durationRaw / 1000).round()
+          : durationRaw.toInt();
+    }
+    var pic = '${raw['pic'] ?? ''}'.trim();
+    pic = _rewriteLocalhostMedia(pic, serverForSource(appSource));
+    return Song(
+      id: '$appSource:$id',
+      title: '${raw['name'] ?? raw['title'] ?? ''}',
+      artist: '${raw['artist'] ?? raw['author'] ?? ''}',
+      album: '${raw['album'] ?? ''}',
+      duration: Duration(seconds: durationSec),
+      artworkUri: pic.isEmpty ? null : _httpsify(pic),
+      isOnline: true,
+      source: appSource,
+    );
   }
 
   Future<({DiscoveryPlaylist? playlist, List<Song> songs})> getPlaylistDetail({
@@ -516,20 +606,41 @@ class DiscoveryApiClient {
           ? (durationRaw / 1000).round()
           : durationRaw.toInt();
     }
+    var pic = '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'.trim();
+    pic = _rewriteLocalhostMedia(pic, serverForSource(source));
     return Song(
       id: '$source:$id',
       title: '${raw['name'] ?? raw['title'] ?? ''}',
       artist: artist,
       album: '${raw['album'] ?? raw['album_name'] ?? ''}',
       duration: Duration(seconds: durationSec),
-      artworkUri: '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'
-              .trim()
-              .isEmpty
-          ? null
-          : '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}',
+      artworkUri: pic.isEmpty ? null : _httpsify(pic),
       isOnline: true,
       source: source,
     );
+  }
+
+  static String serverForSource(String source) {
+    return switch (source) {
+      'qq' => 'tencent',
+      'soda' => 'qishui',
+      'netease' => 'netease',
+      _ => source,
+    };
+  }
+
+  /// qqovo 偶发返回 127.0.0.1 代理封面，改回公网 meting pic。
+  static String _rewriteLocalhostMedia(String url, String server) {
+    final u = url.trim();
+    if (u.isEmpty) return u;
+    final uri = Uri.tryParse(u);
+    if (uri == null) return u;
+    final host = uri.host.toLowerCase();
+    if (host != '127.0.0.1' && host != 'localhost') return u;
+    final id = uri.queryParameters['id'] ?? '';
+    if (id.isEmpty) return u;
+    final type = uri.queryParameters['type'] ?? 'pic';
+    return 'https://music.qqovo.cn/api/meting?server=$server&type=$type&id=$id';
   }
 }
 
