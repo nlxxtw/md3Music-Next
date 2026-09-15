@@ -262,7 +262,9 @@ class QishuiDecrypt {
   static Uint32List _sampleSizes(_Box stsz) {
     final fixed = _u32(stsz.body, 4);
     final count = _u32(stsz.body, 8);
-    if (count > 200000 || (!fixed && 12 + count * 4 > stsz.body.length)) {
+    // JS 里 !fixed 把 0 当假；Dart 里 fixed 是 int，要用 == 0
+    if (count > 200000 ||
+        (fixed == 0 && 12 + count * 4 > stsz.body.length)) {
       throw StateError('汽水音频样本数据无效');
     }
     if (fixed != 0) {

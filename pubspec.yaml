@@ -1,7 +1,7 @@
 name: md3music
 description: "MD3Music - Music player with Material Design 3"
 publish_to: 'none'
-version: 13.3.10+3005
+version: 13.3.10+3006
 
 environment:
   sdk: ^3.12.0
@@ -11,7 +11,7 @@ dependencies:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
-  # just_audio 0.10.6 本地 fork：注入可拦截 AudioSink 的 RenderersFactory（USB 独占输出）
+  # just_audio 0.10.6 本地 fork：注入可拦截 AudioSink �?RenderersFactory（USB 独占输出�?
   just_audio:
     path: third_party/just_audio
   audio_session: ^0.1.18
@@ -43,21 +43,21 @@ dependencies:
   dlna_dart: ^0.1.0
   webview_flutter: ^4.10.0
   flutter_secure_storage: ^10.3.1
-  # 原生 Toast 提示（替代 SnackBar 通知）；10.0.0 起 compileSdk 满足项目 36 要求
+  # 原生 Toast 提示（替�?SnackBar 通知）；10.0.0 �?compileSdk 满足项目 36 要求
   fluttertoast: ^10.0.0
-  # TTML 歌词解析：Apple Music 风格 XML（Timed Text Markup Language）
+  # TTML 歌词解析：Apple Music 风格 XML（Timed Text Markup Language�?
   xml: ^6.5.0
   m3e_core: ^0.1.6
-  # AM 播放器传输按钮：路径级矢量图标形变（play↔pause 连续 morph + prev/next 描边动画）
-  # 纯 Dart、零外部依赖，仅需自带 24x24 描边 SVG
+  # AM 播放器传输按钮：路径级矢量图标形变（play↔pause 连续 morph + prev/next 描边动画�?
+  # �?Dart、零外部依赖，仅需自带 24x24 描边 SVG
   iconic_morph: ^1.9.0
-  # 网络类型检测（WiFi / 移动网络）：音质按网络分别设置
+  # 网络类型检测（WiFi / 移动网络）：音质按网络分别设�?
   connectivity_plus: ^7.0.0
   # 图片选择（外部歌单截图导入）
   image_picker: ^1.1.2
   # 诊断日志导出：系统分享面板（Android ACTION_SEND / Windows 系统分享），自带 FileProvider
   share_plus: ^12.0.2
-  # 诊断日志导出：纯 Dart zip 打包（无原生代码，跨平台）
+  # 诊断日志导出：纯 Dart zip 打包（无原生代码，跨平台�?
   archive: ^4.0.7
 
 dev_dependencies:
@@ -67,8 +67,8 @@ dev_dependencies:
   fake_async: ^1.3.1
   analyzer: ^10.2.0
 
-# objective_c 9.6.x（约 2026-09-15 发布）在 build hook 里引用已移除的
-# Architecture.arm64e，导致 Android release 构建失败。钉到兼容版。
+# objective_c 9.6.x（约 2026-09-15 发布）在 build hook 里引用已移除�?
+# Architecture.arm64e，导�?Android release 构建失败。钉到兼容版�?
 dependency_overrides:
   objective_c: 9.5.0
 
