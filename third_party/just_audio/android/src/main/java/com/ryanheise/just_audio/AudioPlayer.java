@@ -1505,6 +1505,35 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
     // MediaItem.mediaMetadata.extras 同样携带该字段，为后续移除自定义会话做准备。
     private static final String SESSION_LYRIC_INFO_KEY = "lyricInfo";
 
+    // ==== MD3Music fork: Vivo 车载歌词注入（ucar 车联投屏 + vivomusicmix 原子随身听） ====
+    // 随 lyricInfo 一起写进 MediaItem.mediaMetadata.extras。media3 会把 extras 原样
+    // 并入 framework MediaMetadataCompat，车机按 PlaybackState 进度自行滚动整段 LRC。
+    // 铁律（VIVO_CAR_LYRICS_GUIDE）：无歌词时不写任何字段（负状态 = 车机永久单行），
+    // 绝不写 LYRICS_LINE（单行模式信号）。
+    private static final String UCAR_LYRICS_WHOLE = "ucar.media.metadata.LYRICS_WHOLE";
+    private static final String UCAR_LYRICS_STATUS = "ucar.media.metadata.LYRICS_STATUS";
+    private static final String VMM_SUPPORT_EVENT = "vivomusicmix.media.metadata.support_event";
+
+    /**
+     * 从 lyricInfo JSON 提取可用于 Vivo 车机的整段 LRC：
+     * 取 "lyric" 字段，并把 ELRC 词级时间标签 {@code <mm:ss.xxx>} 过滤成纯行级 LRC
+     * （车机 LRC 解析器会把词级标签当文本渲染）。无歌词返回 null。
+     */
+    public static String extractCarLyricsFromLyricInfo(String lyricInfo) {
+        if (lyricInfo == null || lyricInfo.isEmpty()) return null;
+        try {
+            org.json.JSONObject json = new org.json.JSONObject(lyricInfo);
+            String lyric = json.optString("lyric", null);
+            if (lyric == null || lyric.isEmpty()) return null;
+            // 去词级时间标签：<mm:ss.xxx> / <m:ss.x> 等
+            String lrc = lyric.replaceAll("<\\d{1,2}:\\d{1,2}(?:\\.\\d{1,3})?>", "");
+            return lrc.trim().isEmpty() ? null : lrc.trim();
+        } catch (Exception e) {
+            Log.w("AudioFocusFork", "extractCarLyricsFromLyricInfo failed: " + e);
+            return null;
+        }
+    }
+
     /// 根因3修复：一次 replaceMediaItem 同时更新 标题/艺术家 与 extras.lyricInfo，
     /// 消除 performMetadataRefresh 的两次紧邻提交（OPlus 防抖窗口会丢弃第二次，
     /// 日志表现为 "within debounce period, ignore"，导致首曲 hasLyric=false）。
@@ -1703,6 +1732,18 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 newExtras.remove(SESSION_LYRIC_INFO_KEY);
             } else {
                 newExtras.putString(SESSION_LYRIC_INFO_KEY, incomingLyric);
+            }
+            // MD3Music fork: Vivo 车载歌词注入（随 lyricInfo 同步写入）。
+            // 无整段歌词时移除字段（铁律：不写负状态，否则车机永久退回单行）。
+            String carLrc = extractCarLyricsFromLyricInfo(incomingLyric);
+            if (carLrc == null || carLrc.isEmpty()) {
+                newExtras.remove(UCAR_LYRICS_WHOLE);
+                newExtras.remove(UCAR_LYRICS_STATUS);
+                newExtras.remove(VMM_SUPPORT_EVENT);
+            } else {
+                newExtras.putString(UCAR_LYRICS_WHOLE, carLrc);
+                newExtras.putLong(UCAR_LYRICS_STATUS, 0L);
+                newExtras.putLong(VMM_SUPPORT_EVENT, 31L);
             }
             MediaMetadata updated = mb.setExtras(newExtras).build();
             player.replaceMediaItem(

@@ -1,11 +1,11 @@
 {
-  "latestVersion": "13.3.13",
-  "latestBuild": 3009,
+  "latestVersion": "13.3.14",
+  "latestBuild": 3010,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": true,
-  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.13",
-  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.13/app-arm64-v8a-release.apk",
+  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.14",
+  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.14/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "重要更新：修复 qqovo Cookie（汽水/网易无音源）；网易封面 HTTPS。"
+  "message": "重要更新：补全 Vivo 原子/锁屏歌词 MediaSession（lyricInfo + support_event）。"
 }

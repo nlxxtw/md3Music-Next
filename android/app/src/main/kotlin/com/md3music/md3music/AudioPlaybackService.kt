@@ -2166,7 +2166,54 @@ class AudioPlaybackService : Service() {
             lastIsFavorited,
             hasTranslationForCurrentTrack()
         )
+        // MD3Music fork: Vivo 原子随身听（vivomusicmix）歌词推送（歌词就绪后发一次，
+        // 定时器 25s 重发兜底）。
+        pushVivoAtomicExtras()
+        startVivoAtomicTimer()
     }
+
+    // ==== MD3Music fork: Vivo 原子随身听（vivomusicmix）歌词推送 ====
+    // 协议字段照抄 vivo 官方拼写错误（meida / meidia），写成正确拼写反而收不到。
+    private val vivoAtomicHandler = Handler(Looper.getMainLooper())
+    private var lastVivoLrcSentAt = 0L
+    private var lastVivoLrcMediaId = ""
+
+    private fun startVivoAtomicTimer() {
+        vivoAtomicHandler.removeCallbacksAndMessages(null)
+        vivoAtomicHandler.postDelayed(object : Runnable {
+            override fun run() {
+                pushVivoAtomicExtras()
+                vivoAtomicHandler.postDelayed(this, 25_000L)
+            }
+        }, 25_000L)
+    }
+
+    /// 原子随身听歌词：通过 legacy MediaSessionCompat 静态通道向活跃 session 重发
+    /// lrc_change extras（framework extras，25s 定时兜底：覆盖"原子在首次发送后才连上"）。
+    /// meidia_id 必须与 hook 补进 metadata 的身份完全一致（title|artist），
+    /// 否则原子 E0()/z1() 匹配失败 → 封面纯色、歌词不显示（实测 songId 数字 ID 不匹配）。
+    /// 无整段歌词时安全跳过，不推空 Bundle。
+    private fun pushVivoAtomicExtras() {
+        try {
+            val mediaId = if (originalMediaId.isNotEmpty()) originalMediaId
+                else "$originalTitle|$originalArtist"
+            // 与 hook 补的 MEDIA_ID 保持一致：统一用 title|artist 身份
+            val atomicMediaId = "$originalTitle|$originalArtist"
+            if (originalTitle.isEmpty()) return
+            val lrc = AudioPlayer.extractCarLyricsFromLyricInfo(lyricInfoForCurrentTrack())
+                ?: return
+            androidx.media3.session.legacy.MediaSessionCompat
+                .resendVivoLrcChange(lrc, atomicMediaId)
+            lastVivoLrcSentAt = System.currentTimeMillis()
+            lastVivoLrcMediaId = atomicMediaId
+            lastVivoLrcSentLrc = lrc
+        } catch (e: Throwable) {
+            Log.w(TAG, "pushVivoAtomicExtras failed: ${e.message}", e)
+        }
+    }
+
+    @Volatile
+    private var lastVivoLrcSentLrc = ""
 
     private fun lyricInfoForCurrentTrack(): String {
         if (currentLyricInfo.isEmpty()) return ""
@@ -2206,6 +2253,8 @@ class AudioPlaybackService : Service() {
         setLyriconEnabledState(false)
         // P0: 取消排期中的 setMetadata 合并刷新，防止服务销毁后仍回调
         metadataRefreshHandler.removeCallbacksAndMessages(null)
+        // MD3Music fork: 取消原子随身听 25s 重发定时器
+        vivoAtomicHandler.removeCallbacksAndMessages(null)
         releaseWakeLock()
         // 释放缓存的封面 bitmap
         lastArtBitmap?.let { if (!it.isRecycled) it.recycle() }
