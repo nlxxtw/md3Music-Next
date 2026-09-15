@@ -9,6 +9,12 @@ import '../../data/models/song.dart';
 import 'qishui_decrypt.dart';
 import 'qqovo_resolver.dart';
 
+String _httpsify(String url) {
+  final u = url.trim();
+  if (u.startsWith('http://')) return 'https://${u.substring(7)}';
+  return u;
+}
+
 /// musicdl 云端发现 API（推荐 / 排行 / 歌单详情 / 解析播放）。
 class DiscoveryApiClient {
   DiscoveryApiClient({String? baseUrl, Dio? dio})
@@ -167,7 +173,8 @@ class DiscoveryApiClient {
       );
     }
 
-    if (url == null && source != 'netease') {
+    // qqovo 失败时，汽水/网易也回退云端 resolve（与 QQ 一致）
+    if (url == null) {
       try {
         final res = await _dio.get(
           '$baseUrl/api/v1/resolve',
@@ -176,7 +183,6 @@ class DiscoveryApiClient {
             'id': id,
             'quality': quality,
           },
-          // 502 时服务端仍可能带 error 字段，不要直接抛掉
           options: Options(
             validateStatus: (code) => code != null && code < 600,
           ),
@@ -184,7 +190,6 @@ class DiscoveryApiClient {
         final data = res.data;
         if (data is Map) {
           var remote = data['url']?.toString();
-          // Android 禁明文；QQ CDN https 可用，强制升格。
           if (remote != null && remote.startsWith('http://')) {
             remote = 'https://${remote.substring(7)}';
           }
@@ -194,7 +199,7 @@ class DiscoveryApiClient {
             debugPrint('[DiscoveryApi] resolve empty source=$source id=$id '
                 'status=${res.statusCode} error=${data['error']}');
           }
-          final remoteAuth = '${data['auth'] ?? ''}'.trim();
+          final remoteAuth = '${data['auth'] ?? data['play_auth'] ?? ''}'.trim();
           if (remoteAuth.isNotEmpty) sodaAuth = remoteAuth;
         }
       } catch (e) {
@@ -408,7 +413,9 @@ class DiscoveryApiClient {
       if (pl is! Map) {
         return (playlist: null, songs: const <Song>[]);
       }
-      final cover = '${pl['coverImgUrl'] ?? pl['picUrl'] ?? ''}'.trim();
+      final cover = _httpsify(
+        '${pl['coverImgUrl'] ?? pl['picUrl'] ?? ''}'.trim(),
+      );
       final name = '${pl['name'] ?? nameHint ?? '歌单 $id'}'.trim();
       final creatorMap = pl['creator'];
       final creator = creatorMap is Map
@@ -450,6 +457,7 @@ class DiscoveryApiClient {
         var pic = '';
         if (al is Map) pic = '${al['picUrl'] ?? ''}';
         if (pic.isEmpty) pic = '${t['album_pic'] ?? t['pic'] ?? ''}';
+        pic = _httpsify(pic);
         final dt = t['dt'];
         final durationMs = dt is num ? dt.toInt() : 0;
         final title = '${t['name'] ?? ''}'.trim();

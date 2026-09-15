@@ -1,31 +1,40 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:cookie_jar/cookie_jar.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
 
 /// qqovo meting 直链解析（国内优先 music.qqovo.cn，失败再试 qqovo.top）。
+///
+/// 重要：bootstrap 会下发 `openmusic_*` Cookie，后续 meting 必须带上，
+/// 否则仅有签名也会 403（表现为汽水/网易「无音源」）。
 class QqovoResolver {
-  QqovoResolver({Dio? dio})
-      : _dio = dio ??
-            Dio(BaseOptions(
-              connectTimeout: const Duration(seconds: 8),
-              receiveTimeout: const Duration(seconds: 15),
-            ));
+  QqovoResolver({Dio? dio}) : _dio = dio ?? _sharedDio;
 
   final Dio _dio;
+
+  /// 全应用共用 CookieJar，保证 bootstrap → meting 同会话。
+  static final CookieJar _cookieJar = CookieJar();
+  static final Dio _sharedDio = () {
+    final d = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 20),
+    ));
+    d.interceptors.add(CookieManager(_cookieJar));
+    return d;
+  }();
 
   static const _bases = <String>[
     'https://music.qqovo.cn',
     'https://qqovo.top',
   ];
 
-  /// 复用 bootstrap，避免每切一首都重新握手（切歌延迟主因之一）。
+  /// 复用 bootstrap，避免每切一首都重新握手。
   static final Map<String, _QqovoSession> _sessions = {};
 
-  /// 按用户音质偏好生成 qqovo quality 尝试列表（高→低）。
-  /// [preference] 为 [AudioQuality.value]：`128` / `320` / `flac` / `high`(Hi-Res)。
   static List<String> qualitiesFor({
     required String server,
     String preference = '320',
@@ -38,7 +47,6 @@ class QqovoResolver {
       if (wantHigh) return const ['320', '128'];
       return const ['128', '320'];
     }
-    // qishui / 汽水：lossless/exhigh 为高码率 AAC-M4A
     if (server == 'qishui') {
       if (wantLossless) {
         return const [
@@ -56,7 +64,7 @@ class QqovoResolver {
       }
       return const ['standard', '128', 'exhigh'];
     }
-    // netease
+    // netease：优先标准码率，兼容性最好
     if (wantLossless) {
       return const [
         'jymaster',
@@ -66,15 +74,15 @@ class QqovoResolver {
         'exhigh',
         'higher',
         'standard',
+        '128',
       ];
     }
     if (wantHigh) {
       return const ['exhigh', 'higher', 'standard', '128'];
     }
-    return const ['standard', 'higher', 'exhigh'];
+    return const ['standard', '128', 'higher', 'exhigh'];
   }
 
-  /// 通用 meting 请求（search / playlist / song 等），返回 JSON。
   Future<dynamic> meting({
     required String server,
     required String type,
@@ -92,8 +100,16 @@ class QqovoResolver {
             '$base/api/meting?server=$server&type=$type&id=$songId$q';
         final resp = await _dio.get(
           url,
-          options: Options(headers: _signedHeaders(base, url, session.key)),
+          options: Options(
+            headers: _signedHeaders(base, url, session.key),
+            validateStatus: (c) => c != null && c < 500,
+          ),
         );
+        if (resp.statusCode == 403) {
+          _sessions.remove(base);
+          await _cookieJar.delete(Uri.parse(base));
+          continue;
+        }
         return resp.data;
       } catch (e) {
         debugPrint('[QqovoResolver] meting $server/$type failed: $e');
@@ -118,7 +134,7 @@ class QqovoResolver {
         ?.url;
   }
 
-  /// 汽水二次解析会带 [QqovoHit.auth]（AES-CTR 密钥），直链本身是加密 MP4。
+  /// 汽水二次解析会带 [QqovoHit.auth]（AES-CTR 密钥）。
   Future<QqovoHit?> resolveHit({
     required String server,
     required String id,
@@ -157,24 +173,41 @@ class QqovoResolver {
             '$base/api/meting?server=$server&type=url&id=$songId&quality=$quality';
         final trackResp = await _dio.get(
           trackUrl,
-          options: Options(headers: _signedHeaders(base, trackUrl, session.key)),
+          options: Options(
+            headers: _signedHeaders(base, trackUrl, session.key),
+            validateStatus: (c) => c != null && c < 500,
+          ),
         );
+        if (trackResp.statusCode == 403) {
+          debugPrint('[QqovoResolver] 403 on $base — clear session/cookies');
+          _sessions.remove(base);
+          await _cookieJar.delete(Uri.parse(base));
+          return null;
+        }
         final data = trackResp.data;
         if (data is! Map) continue;
 
-        // QQ：meting 直接给播放直链；汽水：先给 source url 再二次取流（含 auth）
-        var playUrl = '${data['url'] ?? ''}';
+        var playUrl = '${data['url'] ?? ''}'.trim();
         var auth = '${data['auth'] ?? ''}'.trim();
+        // 相对路径补全
+        if (playUrl.startsWith('/')) {
+          playUrl = '$base$playUrl';
+        }
+        // 汽水：先给 /api/qishui-source，再二次取 CDN + auth
         if (playUrl.startsWith('http') &&
-            (playUrl.contains('qqovo.') || playUrl.contains('/api/'))) {
+            (playUrl.contains('qqovo.') ||
+                playUrl.contains('/api/qishui') ||
+                playUrl.contains('/api/'))) {
           final sourceResp = await _dio.get(
             playUrl,
-            options:
-                Options(headers: _signedHeaders(base, playUrl, session.key)),
+            options: Options(
+              headers: _signedHeaders(base, playUrl, session.key),
+              validateStatus: (c) => c != null && c < 500,
+            ),
           );
           final sourceData = sourceResp.data;
           if (sourceData is Map) {
-            playUrl = '${sourceData['url'] ?? ''}';
+            playUrl = '${sourceData['url'] ?? ''}'.trim();
             final nestedAuth = '${sourceData['auth'] ?? ''}'.trim();
             if (nestedAuth.isNotEmpty) auth = nestedAuth;
           }
@@ -183,6 +216,9 @@ class QqovoResolver {
           playUrl = 'https://${playUrl.substring(7)}';
         }
         if (playUrl.startsWith('http')) {
+          debugPrint(
+            '[QqovoResolver] hit $server/$songId q=$quality auth=${auth.isNotEmpty}',
+          );
           return QqovoHit(url: playUrl, auth: auth.isEmpty ? null : auth);
         }
       }
@@ -203,15 +239,20 @@ class QqovoResolver {
       options: Options(
         contentType: 'application/json',
         headers: _browserHeaders(base),
+        validateStatus: (c) => c != null && c < 500,
       ),
     );
-    final apiSignKey = '${boot.data?['apiSignKey'] ?? ''}';
-    if (apiSignKey.isEmpty) return null;
+    final apiSignKey = '${boot.data?['apiSignKey'] ?? ''}'.trim();
+    if (apiSignKey.isEmpty) {
+      debugPrint('[QqovoResolver] bootstrap empty key status=${boot.statusCode}');
+      return null;
+    }
     final session = _QqovoSession(
       key: apiSignKey,
       expiresAt: DateTime.now().add(const Duration(minutes: 8)),
     );
     _sessions[base] = session;
+    debugPrint('[QqovoResolver] bootstrap ok $base');
     return session;
   }
 
@@ -224,6 +265,7 @@ class QqovoResolver {
         'Origin': base,
       };
 
+  /// 签名：body 段对 GET 用空字符串（与 music.qqovo.cn 实测一致；勿用 sha256('')）。
   Map<String, String> _signedHeaders(
     String base,
     String url,

@@ -20,6 +20,13 @@ class DiscoveryCoverImage extends StatelessWidget {
       'com.luna.music/100198030 (Linux; U; Android 15; zh_CN_#Hans; '
       'ABR-AL80; Build/V417IR;tt-ok/3.12.13.19)';
 
+  /// http → https（网易封面常返回 http://p*.music.126.net，Android 禁明文会空白）。
+  static String httpsify(String url) {
+    final u = url.trim();
+    if (u.startsWith('http://')) return 'https://${u.substring(7)}';
+    return u;
+  }
+
   static Map<String, String>? headersFor(String url) {
     final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
     if (host.contains('douyinpic') ||
@@ -42,6 +49,14 @@ class DiscoveryCoverImage extends StatelessWidget {
         'Referer': 'https://y.qq.com/',
       };
     }
+    if (host.contains('music.126.net') || host.contains('163.com')) {
+      return {
+        'User-Agent':
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Referer': 'https://music.163.com/',
+      };
+    }
     return null;
   }
 
@@ -54,11 +69,12 @@ class DiscoveryCoverImage extends StatelessWidget {
           child: const Icon(Icons.music_note),
         );
     if (url.isEmpty) return fallback;
+    final imageUrl = httpsify(url);
     return CachedNetworkImage(
-      imageUrl: url,
+      imageUrl: imageUrl,
       fit: fit,
       memCacheWidth: memCacheWidth,
-      httpHeaders: headersFor(url),
+      httpHeaders: headersFor(imageUrl),
       errorWidget: (_, __, ___) => fallback,
     );
   }
