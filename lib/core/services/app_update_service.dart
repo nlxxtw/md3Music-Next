@@ -134,6 +134,13 @@ class AppUpdateService {
       final decision = await evaluate();
       if (decision == null || decision.kind == AppUpdateKind.none) return;
       if (!context.mounted) return;
+      // 确保 context 下有 Navigator；否则强制弹窗会抛错并被吞掉。
+      if (Navigator.maybeOf(context) == null) {
+        debugPrint(
+          'AppUpdateService.checkAndPrompt: no Navigator in context, skip',
+        );
+        return;
+      }
       await showUpdateDialog(context, decision);
     } catch (e, st) {
       debugPrint('AppUpdateService.checkAndPrompt failed: $e\n$st');
@@ -448,7 +455,8 @@ class AppUpdateService {
               ),
               FilledButton(
                 onPressed: () async {
-                  Navigator.of(ctx).pop();
+                  // 强制更新不要先关掉弹窗：装完前仍挡住返回。
+                  if (!force) Navigator.of(ctx).pop();
                   if (!context.mounted) return;
                   await AppUpdateService.instance
                       .downloadAndInstall(context, info);

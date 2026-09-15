@@ -237,10 +237,19 @@ class _AppViewState extends State<_AppView> {
       ExternalMediaIntentService.instance.start();
       // 媒体通知栏歌词管线：绑定 Player 并开始 tick（无需开悬浮窗）
       DesktopLyricService.instance.ensureNotificationLyricPipeline();
-      // 延迟检查更新：避开启动闪屏/协议页，再弹强制/可选更新框
-      Future<void>.delayed(const Duration(seconds: 2), () {
+      // 延迟检查更新：必须用 navigatorKey context（本 State 在 MaterialApp 外层，
+      // 直接 showDialog 会找不到 Navigator，强制更新会静默失败）。
+      Future<void>.delayed(const Duration(seconds: 2), () async {
         if (!mounted) return;
-        AppUpdateService.instance.checkAndPrompt(context);
+        for (var i = 0; i < 10; i++) {
+          final navCtx = appNavigatorKey.currentContext;
+          if (navCtx != null && navCtx.mounted) {
+            await AppUpdateService.instance.checkAndPrompt(navCtx);
+            return;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          if (!mounted) return;
+        }
       });
     });
   }

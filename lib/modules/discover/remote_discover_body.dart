@@ -7,7 +7,6 @@ import '../../providers/player_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
 import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/song_list_item.dart';
-import '../sound/sounds_page.dart';
 import 'remote_playlist_page.dart';
 import 'remote_toplist_page.dart';
 
@@ -249,17 +248,6 @@ class RemoteDiscoverBody extends StatelessWidget {
                 },
               ),
             ),
-          const SizedBox(height: 8),
-          ListTile(
-            leading: const Icon(Icons.surround_sound_outlined),
-            title: const Text('音效'),
-            subtitle: const Text('卷积 / 蝰蛇音效，与音源无关'),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SoundsPage()),
-              );
-            },
-          ),
         ],
       ),
     );
