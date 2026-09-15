@@ -187,25 +187,22 @@ jobs:
       # ============================================================
       - name: Download release keystore
         id: keystore
-        continue-on-error: true
         run: |
-          set -e
+          set -euo pipefail
           echo "Downloading release.keystore from 'keystore' release..."
           if ! curl -fL --retry 3 -o /tmp/release.keystore \
               "https://github.com/${GITHUB_REPOSITORY}/releases/download/keystore/release.keystore"; then
             echo ""
             echo "============================================================"
-            echo "WARN: keystore release 不存在，使用 debug keystore 兜底"
+            echo "ERROR: 缺少持久签名 keystore，拒绝用 debug 签名发版"
+            echo "（debug 签名每台 CI 机器不同，用户无法覆盖安装下一版）"
             echo ""
-            echo "首次启用持久签名需要："
-            echo "  1. 在本地生成 release.keystore"
-            echo "  2. 创建一个名为 'keystore' 的 release："
-            echo "     https://github.com/${GITHUB_REPOSITORY}/releases/new?tag=keystore"
-            echo "  3. 把 release.keystore 作为资产上传"
-            echo "  4. 重新触发本 workflow"
+            echo "请先完成："
+            echo "  1. 本地生成 release.keystore"
+            echo "  2. 创建 tag/release 名为 keystore，上传 release.keystore"
+            echo "  3. 配置 Secrets: ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD / ANDROID_KEY_ALIAS"
             echo "============================================================"
-            echo "keystore_available=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            exit 1
           fi
           cp /tmp/release.keystore android/app/release.keystore
           rm /tmp/release.keystore
@@ -213,17 +210,20 @@ jobs:
           echo "keystore_available=true" >> "$GITHUB_OUTPUT"
 
       - name: Generate keystore.properties (for CI)
-        if: steps.keystore.outputs.keystore_available == 'true'
         run: |
-          set -e
+          set -euo pipefail
+          if [ -z "${KEYSTORE_PASSWORD:-}" ] || [ -z "${KEY_PASSWORD:-}" ] || [ -z "${KEY_ALIAS:-}" ]; then
+            echo "ERROR: ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD / ANDROID_KEY_ALIAS secrets required"
+            exit 1
+          fi
           cat > android/keystore.properties <<EOF
-          storePassword=${KEYSTORE_PASSWORD:-android}
-          keyPassword=${KEY_PASSWORD:-android}
-          keyAlias=${KEY_ALIAS:-androiddebugkey}
+          storePassword=${KEYSTORE_PASSWORD}
+          keyPassword=${KEY_PASSWORD}
+          keyAlias=${KEY_ALIAS}
           storeFile=release.keystore
+          storeType=PKCS12
           EOF
-          echo "keystore.properties:"
-          cat android/keystore.properties
+          echo "keystore.properties written (secrets redacted)"
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}

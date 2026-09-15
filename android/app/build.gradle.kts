@@ -51,6 +51,10 @@ android {
                 keyPassword = keystoreProperties.getProperty("keyPassword")
                 storeFile = file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
+                val storeType = keystoreProperties.getProperty("storeType")
+                if (!storeType.isNullOrBlank()) {
+                    this.storeType = storeType
+                }
             }
         }
     }
@@ -63,13 +67,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Use the persistent release signing config (if keystore.properties exists)
-            // Falls back to debug signing when keystore.properties is missing (CI / first build)
-            signingConfig = if (keystoreProperties.isNotEmpty()) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
+            // Release 必须用持久签名；缺 keystore 时不要静默退回 debug（否则每台 CI 签名不同，无法覆盖安装）
+            check(keystoreProperties.isNotEmpty()) {
+                "Missing android/keystore.properties — CI must download release.keystore and write secrets."
             }
+            signingConfig = signingConfigs.getByName("release")
         }
         debug {
             // Disable symbol stripping for Gradle 9.x compatibility
