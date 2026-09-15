@@ -152,8 +152,6 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          # 钉版本，避免 stable 漂到与传递依赖不兼容的版本
-          flutter-version: '3.38.5'
           cache: true
 
       # ============================================================
