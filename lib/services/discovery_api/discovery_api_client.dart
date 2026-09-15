@@ -607,7 +607,13 @@ class DiscoveryApiClient {
           : durationRaw.toInt();
     }
     var pic = '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'.trim();
-    pic = _rewriteLocalhostMedia(pic, serverForSource(source));
+    final server = serverForSource(source);
+    pic = _rewriteLocalhostMedia(pic, server);
+    // 网易 FM 常缺 pic：用 meting type=pic 兜底，否则漫游卡/锁屏全空白。
+    if (pic.isEmpty && id.isNotEmpty) {
+      pic =
+          'https://music.qqovo.cn/api/meting?server=$server&type=pic&id=${Uri.encodeQueryComponent(id)}';
+    }
     return Song(
       id: '$source:$id',
       title: '${raw['name'] ?? raw['title'] ?? ''}',

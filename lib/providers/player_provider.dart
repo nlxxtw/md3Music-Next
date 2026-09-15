@@ -2184,12 +2184,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
     // 音量均衡：把当前歌曲的响度元数据带给播放器（无响度则旁路为 0 dB）。
     // 远程发现无可靠响度，勿沿用上一首把声音压没。
+    final song = _currentSong;
     await _audioService.setUrl(
       url,
       loudnessLufs:
-          _currentSong?.isRemoteDiscovery == true ? null : _currentSong?.loudnessLufs,
+          song?.isRemoteDiscovery == true ? null : song?.loudnessLufs,
       loudnessPeakDb:
-          _currentSong?.isRemoteDiscovery == true ? null : _currentSong?.loudnessPeakDb,
+          song?.isRemoteDiscovery == true ? null : song?.loudnessPeakDb,
+      id: song?.id,
+      title: song?.displayName,
+      artist: song?.artist,
+      album: song?.album,
+      // 在线封面写入 MediaItem.artUri，供原子随身听 / 锁屏 / 媒体3 拉图
+      artUri: (song?.isOnline == true) ? song?.artworkUri : null,
     );
     // 直链加载后强制拉回用户音量（交叉淡化曾把播放器置 0）
     if (_currentSong?.isRemoteDiscovery == true) {
@@ -3494,7 +3501,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // just_audio 无法加载这些 URI 作为封面；系统通知封面由
     // AudioPlaybackService 通过 fallbackFilePath 提取内嵌封面处理
     final effectiveArtUri = song.isOnline && song.artworkUri != null
-        ? Uri.parse(song.artworkUri!)
+        ? Uri.parse(
+            song.artworkUri!.startsWith('http://')
+                ? 'https://${song.artworkUri!.substring(7)}'
+                : song.artworkUri!,
+          )
         : null;
     if (kIsWeb) {
       return createAudioSourceWeb(

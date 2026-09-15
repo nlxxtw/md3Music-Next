@@ -623,6 +623,11 @@ class AudioService {
     double? loudnessLufs,
     double? loudnessPeakDb,
     Map<String, String>? headers,
+    String? id,
+    String? title,
+    String? artist,
+    String? album,
+    String? artUri,
   }) async {
     abortCrossfade();
     // 音量均衡响度：歌曲未带响度时，回退查「url → 响度」缓存（KugouPlayUrl 解析时记录）
@@ -641,7 +646,31 @@ class AudioService {
       _vnLufs = null;
       _vnPeakDb = null;
     }
-    if (effectiveHeaders == null) {
+    // 带 artUri 的 MediaItem：SystemUI / 原子随身听 / 媒体3 通知从 artUri 拉封面。
+    // 仅 setUrl 无 tag 时，后续 bitmap 注入也常不触发 MediaSession 同步。
+    var art = artUri?.trim();
+    if (art != null && art.startsWith('http://')) {
+      art = 'https://${art.substring(7)}';
+    }
+    final artUriParsed =
+        (art != null && art.isNotEmpty) ? Uri.tryParse(art) : null;
+    final useTaggedSource =
+        id != null || title != null || artUriParsed != null;
+    if (useTaggedSource) {
+      await _activePlayer.setAudioSource(
+        AudioSource.uri(
+          Uri.parse(url),
+          headers: effectiveHeaders,
+          tag: {
+            'id': id,
+            'title': title ?? '',
+            'artist': artist,
+            'album': album,
+            'artUri': artUriParsed?.toString(),
+          },
+        ),
+      );
+    } else if (effectiveHeaders == null) {
       await _activePlayer.setUrl(url);
     } else {
       await _activePlayer.setUrl(url, headers: effectiveHeaders);

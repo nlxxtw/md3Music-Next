@@ -113,6 +113,9 @@ class AudioPlaybackService : Service() {
         // 方案A：在线封面本地缓存（根治切歌空档）。内存缓存 key=artUrl，磁盘缓存按 URL hash 命名。
         // 命中内存/磁盘 → 免网络下载，切歌秒显；未命中才下载并写缓存。
         private val coverMemoryCache = ConcurrentHashMap<String, Bitmap>()
+        // 下载失败冷却：网易无 Referer/超时后，息屏再开不要反复 5–10s 重试拖垮整机。
+        private val coverFailedUntil = ConcurrentHashMap<String, Long>()
+        private const val COVER_FAIL_COOLDOWN_MS = 60_000L
         private const val COVER_CACHE_DIR = "cover_cache"
         // 磁盘缓存上限（张）：超限清空最旧文件，避免无限增长
         private const val COVER_CACHE_MAX = 200
@@ -1775,20 +1778,41 @@ class AudioPlaybackService : Service() {
         if (artUri.startsWith("http://") || artUri.startsWith("https://")) {
             val normalized = CoverHttp.normalizeUrl(artUri) ?: artUri
             // 缓存命中：内存或磁盘，直接返回（切歌空档的根治关键）
-            getCachedCover(normalized)?.let { return it }
-            if (normalized != artUri) getCachedCover(artUri)?.let { return it }
+            getCachedCover(normalized)?.let {
+                coverFailedUntil.remove(normalized)
+                return it
+            }
+            if (normalized != artUri) getCachedCover(artUri)?.let {
+                coverFailedUntil.remove(artUri)
+                return it
+            }
+            val failUntil = coverFailedUntil[normalized] ?: 0L
+            if (failUntil > System.currentTimeMillis()) {
+                Log.d(TAG, "封面失败冷却中，跳过重下 url=$normalized")
+                return null
+            }
             return try {
                 // P0: HttpURLConnection 显式设置超时，避免慢响应导致线程永久阻塞
-                val conn = CoverHttp.open(normalized)
+                val conn = CoverHttp.open(normalized, connectMs = 4000, readMs = 6000)
                 try {
+                    val code = conn.responseCode
+                    if (code !in 200..299) {
+                        Log.w(TAG, "封面 http 状态码=$code url=$normalized")
+                        coverFailedUntil[normalized] =
+                            System.currentTimeMillis() + COVER_FAIL_COOLDOWN_MS
+                        return null
+                    }
                     val bmp = BitmapFactory.decodeStream(conn.inputStream)
                     if (bmp != null) {
                         Log.i(TAG, "封面 http 下载成功 ${bmp.width}x${bmp.height} url=$normalized")
                         // 写入本地缓存，下次切到同歌秒显
                         putCoverCache(normalized, bmp)
                         if (normalized != artUri) putCoverCache(artUri, bmp)
+                        coverFailedUntil.remove(normalized)
                     } else {
                         Log.w(TAG, "封面 http 解码失败(响应非图片/空流) url=$normalized")
+                        coverFailedUntil[normalized] =
+                            System.currentTimeMillis() + COVER_FAIL_COOLDOWN_MS
                     }
                     bmp
                 } finally {
@@ -1797,6 +1821,8 @@ class AudioPlaybackService : Service() {
             } catch (e: Exception) {
                 // 封面链路日志：网络波动/超时会造成这里 null→MediaSession 无 bitmap，正是偶现失效点
                 Log.w(TAG, "封面 http 下载异常 ${e.message} url=$normalized")
+                coverFailedUntil[normalized] =
+                    System.currentTimeMillis() + COVER_FAIL_COOLDOWN_MS
                 null
             }
         }

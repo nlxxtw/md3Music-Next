@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../core/services/local_artwork_cache.dart';
+import 'discovery_cover_image.dart';
 
 /// 播放器专用封面图组件，支持所有 artworkUri 类型。
 ///
@@ -173,12 +174,15 @@ class _PlayerArtworkImageState extends State<PlayerArtworkImage> {
     }
 
     // http(s):// 在线封面：用 CachedNetworkImage（带磁盘缓存）
+    // 网易等 CDN 需 Referer；统一 httpsify，与发现页封面一致。
     if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      final imageUrl = DiscoveryCoverImage.httpsify(uri);
       return CachedNetworkImage(
-        imageUrl: uri,
+        imageUrl: imageUrl,
         width: widget.isFill ? double.infinity : null,
         height: widget.isFill ? double.infinity : null,
         fit: widget.fit,
+        httpHeaders: DiscoveryCoverImage.headersFor(imageUrl),
         placeholder: (_, _) => _placeholder(bg, icon, iSize),
         errorWidget: (_, _, _) => _placeholder(bg, icon, iSize),
       );
@@ -207,6 +211,10 @@ class _PlayerArtworkImageState extends State<PlayerArtworkImage> {
 void preloadPlayerArtwork(String? url) {
   if (url == null || url.isEmpty) return;
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    CachedNetworkImageProvider(url).resolve(const ImageConfiguration());
+    final imageUrl = DiscoveryCoverImage.httpsify(url);
+    CachedNetworkImageProvider(
+      imageUrl,
+      headers: DiscoveryCoverImage.headersFor(imageUrl),
+    ).resolve(const ImageConfiguration());
   }
 }

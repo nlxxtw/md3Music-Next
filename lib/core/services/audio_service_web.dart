@@ -67,6 +67,12 @@ class AudioService {
     String url, {
     double? loudnessLufs,
     double? loudnessPeakDb,
+    Map<String, String>? headers,
+    String? id,
+    String? title,
+    String? artist,
+    String? album,
+    String? artUri,
   }) async {
     final blobUrl = await _fetchAudioBlob(url);
     await _player.setUrl(blobUrl);

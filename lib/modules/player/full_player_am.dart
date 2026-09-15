@@ -2098,7 +2098,6 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
       song.sourceLabel,
     ];
     final subtitle = bits.where((e) => e.trim().isNotEmpty).join(' · ');
-    final qLabel = playerProvider.currentQualityLabel;
     return Column(
       crossAxisAlignment: alignment,
       children: [
@@ -2124,24 +2123,6 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                   textAlign: textAlign,
                 ),
               ),
-              if (qLabel.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.white70),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Text(
-                    qLabel,
-                    style: textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),
