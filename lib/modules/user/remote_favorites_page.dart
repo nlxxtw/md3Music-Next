@@ -1,10 +1,10 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/song.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/player_provider.dart';
+import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/scroll_aware_app_bar.dart';
 
 /// QQ / 汽水发现曲的本地收藏（不进酷狗「我喜欢」）。
@@ -107,14 +107,9 @@ class _RemoteFavoritesPageState extends State<RemoteFavoritesPage> {
                               color: cs.surfaceContainerHighest,
                               child: const Icon(Icons.music_note),
                             )
-                          : CachedNetworkImage(
-                              imageUrl: s.artworkUri!,
-                              fit: BoxFit.cover,
+                          : DiscoveryCoverImage(
+                              url: s.artworkUri!,
                               memCacheWidth: 96,
-                              errorWidget: (_, __, ___) => ColoredBox(
-                                color: cs.surfaceContainerHighest,
-                                child: const Icon(Icons.music_note),
-                              ),
                             ),
                     ),
                   ),

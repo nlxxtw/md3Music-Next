@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +6,7 @@ import '../../providers/discover_source_provider.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
+import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/scroll_aware_app_bar.dart';
 
 class RemoteToplistPage extends StatefulWidget {
@@ -113,9 +113,8 @@ class _RemoteToplistPageState extends State<RemoteToplistPage> {
                                       color: Colors.black12,
                                       child: Icon(Icons.music_note),
                                     )
-                                  : CachedNetworkImage(
-                                      imageUrl: s.artworkUri!,
-                                      fit: BoxFit.cover,
+                                  : DiscoveryCoverImage(
+                                      url: s.artworkUri!,
                                       memCacheWidth: 96,
                                     ),
                             ),

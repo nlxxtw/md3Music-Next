@@ -1864,7 +1864,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         if (_audioService != null) {
           await _setUrlAndPlay(fileUri);
         }
-      } else if (isRemote) {
+        } else if (isRemote) {
         final url = await _resolveRemoteDiscoveryUrl(_currentSong!);
         if (url != null && url.isNotEmpty) {
           _actualPlayingQuality = _audioQuality.value;
@@ -1875,6 +1875,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           notifyListeners();
           if (_audioService != null) {
             await _setUrlAndPlay(url);
+            // 远程源偶发加载后音量为 0（交叉淡化/空 headers 遗留），强制拉回用户音量
+            try {
+              await _audioService.setVolume(_volume);
+            } catch (_) {}
           }
         } else {
           _isResolvingUrl = false;

@@ -1,9 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/discover_source_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
+import '../../widgets/discovery_cover_image.dart';
 import 'remote_playlist_page.dart';
 import 'remote_toplist_page.dart';
 
@@ -169,14 +169,9 @@ class _CoverCard extends StatelessWidget {
                         color: cs.surfaceContainerHighest,
                         child: const Icon(Icons.music_note),
                       )
-                    : CachedNetworkImage(
-                        imageUrl: cover,
-                        fit: BoxFit.cover,
+                    : DiscoveryCoverImage(
+                        url: cover,
                         memCacheWidth: 220,
-                        errorWidget: (_, __, ___) => ColoredBox(
-                          color: cs.surfaceContainerHighest,
-                          child: const Icon(Icons.music_note),
-                        ),
                       ),
               ),
             ),
@@ -217,14 +212,9 @@ class _PlaylistTile extends StatelessWidget {
                       color: cs.surfaceContainerHighest,
                       child: const Icon(Icons.queue_music),
                     )
-                  : CachedNetworkImage(
-                      imageUrl: playlist.cover,
-                      fit: BoxFit.cover,
+                  : DiscoveryCoverImage(
+                      url: playlist.cover,
                       memCacheWidth: 400,
-                      errorWidget: (_, __, ___) => ColoredBox(
-                        color: cs.surfaceContainerHighest,
-                        child: const Icon(Icons.queue_music),
-                      ),
                     ),
             ),
           ),
