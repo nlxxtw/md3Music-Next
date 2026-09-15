@@ -95,6 +95,11 @@ jobs:
           else
             VERSION_CODE=1
           fi
+          # 保底：避免旁路大号 versionCode 与正式包序号交叉导致更新误判。
+          # 正式序号若仍偏小，抬到 3000 起跳（与历史旁路 2xxx 错开）。
+          if [ "$VERSION_CODE" -lt 3000 ]; then
+            VERSION_CODE=3000
+          fi
 
           FULL_VERSION="${VERSION}+${VERSION_CODE}"
           echo "tag=$TAG"             >> "$GITHUB_OUTPUT"

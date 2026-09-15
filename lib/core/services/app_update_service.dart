@@ -165,18 +165,22 @@ class AppUpdateService {
     return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
   }
 
-  /// 当前是否低于目标：优先比 versionCode（build），再比 semver。
+  /// 当前是否低于目标：先比 semver，同版本再比 versionCode。
+  ///
+  /// 不能只比 build：本机旁路包可能带很大的 versionCode（如 2135），
+  /// 而 Actions 正式包从较小序号递增（如 135），否则会误判「已是最新」。
   static bool _isOlder(
     String curVer,
     int curBuild,
     String targetVer,
     int targetBuild,
   ) {
+    final semver = _compareSemver(curVer, targetVer);
+    if (semver != 0) return semver < 0;
     if (targetBuild > 0 && curBuild > 0) {
-      if (curBuild < targetBuild) return true;
-      if (curBuild > targetBuild) return false;
+      return curBuild < targetBuild;
     }
-    return _compareSemver(curVer, targetVer) < 0;
+    return false;
   }
 
   static int _compareSemver(String a, String b) {
