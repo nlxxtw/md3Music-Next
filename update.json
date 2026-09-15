@@ -1,11 +1,11 @@
 {
   "latestVersion": "13.3.9",
-  "latestBuild": 3003,
+  "latestBuild": 3004,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": false,
   "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.9",
   "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.9/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "MD3Music v13.3.9：汽水落盘播放修无声；QQ/汽水默认高音质，可手动切标准。"
+  "message": "MD3Music v13.3.9 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
 }
