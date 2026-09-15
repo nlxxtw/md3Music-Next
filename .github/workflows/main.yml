@@ -343,6 +343,62 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ============================================================
+      # 8.5 同步 update.json → main
+      #     App「检查更新」读的是 main/update.json（raw.githubusercontent）。
+      #     以前只发 Release、不改这个文件，会导致装了新包仍提示「已是最新」。
+      # ============================================================
+      - name: Sync update.json on main
+        if: steps.version.outputs.tag_exists == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          VERSION_CODE: ${{ steps.version.outputs.versionCode }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 - <<'PY'
+          import json, os
+          path = "update.json"
+          data = {}
+          if os.path.exists(path):
+              with open(path, encoding="utf-8") as f:
+                  data = json.load(f)
+          version = os.environ["VERSION"]
+          code = int(os.environ["VERSION_CODE"])
+          tag = os.environ["TAG"]
+          repo = os.environ.get("GITHUB_REPOSITORY", "nlxxtw/md3Music-Next")
+          data.update({
+              "latestVersion": version,
+              "latestBuild": code,
+              "minVersion": data.get("minVersion") or "0.0.0",
+              "minBuild": int(data.get("minBuild") or 0),
+              "force": bool(data.get("force") or False),
+              "url": f"https://github.com/{repo}/releases/tag/{tag}",
+              "title": data.get("title") or "发现新版本",
+              "message": data.get("message") or f"MD3Music v{version} 已发布，请更新后继续使用。",
+          })
+          with open(path, "w", encoding="utf-8", newline="\n") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          print("Wrote update.json:")
+          print(json.dumps(data, ensure_ascii=False, indent=2))
+          PY
+
+          git add update.json
+          if git diff --cached --quiet; then
+            echo "update.json already up to date"
+          else
+            git commit -m "chore: sync update.json to ${VERSION}+${VERSION_CODE}"
+            git push origin main
+            echo "Pushed update.json sync to main"
+          fi
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
