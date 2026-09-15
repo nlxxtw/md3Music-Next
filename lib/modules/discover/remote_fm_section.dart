@@ -210,7 +210,7 @@ class _RemoteFmSectionState extends State<RemoteFmSection> {
         Positioned(
           left: 0,
           top: 0,
-          child: _buildCurrentCover(cs, current, platform),
+          child: _buildCurrentCover(cs, current),
         ),
       ],
     );
@@ -240,7 +240,7 @@ class _RemoteFmSectionState extends State<RemoteFmSection> {
     );
   }
 
-  Widget _buildCurrentCover(ColorScheme cs, Song? current, String platform) {
+  Widget _buildCurrentCover(ColorScheme cs, Song? current) {
     final art = current?.artworkUri ?? '';
     final cover = ClipRRect(
       borderRadius: BorderRadius.circular(_kCoverRadius),
@@ -256,35 +256,9 @@ class _RemoteFmSectionState extends State<RemoteFmSection> {
               ),
       ),
     );
-    final badged = Stack(
-      children: [
-        cover,
-        Positioned(
-          left: 6,
-          bottom: 6,
-          child: DecoratedBox(
-            decoration: ShapeDecoration(
-              color: Colors.black.withValues(alpha: 0.55),
-              shape: const StadiumBorder(),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              child: Text(
-                platform,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                      height: 1.1,
-                    ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-    if (current == null) return badged;
+    if (current == null) return cover;
     return _tappable(
-      cover: badged,
+      cover: cover,
       radius: _kCoverRadius,
       label: '正在播放 ${current.title}',
       tooltip: '打开播放详情',

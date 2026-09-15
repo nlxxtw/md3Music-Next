@@ -567,10 +567,7 @@ class PersonalFmWidgetProvider : AppWidgetProvider() {
         Thread {
             var bmp: Bitmap? = null
             try {
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
+                val conn = CoverHttp.open(url, connectMs = 8000, readMs = 8000)
                 if (conn.responseCode in 200..299) {
                     bmp = decodeCover(conn.inputStream, targetPx)
                 }

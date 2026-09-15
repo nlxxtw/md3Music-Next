@@ -1066,6 +1066,17 @@ Map<String, String>? _discoveryStreamHeaders(String url) {
       host.contains('gtimg')) {
     return {'User-Agent': chromeUa, 'Referer': 'https://y.qq.com/'};
   }
+  if (host.contains('music.126.net') ||
+      host.contains('163.com') ||
+      host.contains('netease') ||
+      host.contains('qqovo')) {
+    return {
+      'User-Agent': chromeUa,
+      'Referer': host.contains('qqovo')
+          ? 'https://music.qqovo.cn/'
+          : 'https://music.163.com/',
+    };
+  }
   if (host.contains('douyinvod') ||
       host.contains('douyinpic') ||
       host.contains('bytevod') ||

@@ -711,7 +711,7 @@ Song songFromDiscovery(Map<String, dynamic> json, String source) {
   final coverRaw = (json['cover'] as String?)?.trim() ?? '';
   // Luna 曾返回残缺前缀 …/img/，不当作有效封面
   final cover = (coverRaw.isNotEmpty && !coverRaw.endsWith('/img/') && !coverRaw.endsWith('/img'))
-      ? coverRaw
+      ? _httpsify(coverRaw)
       : null;
   return Song(
     id: '$source:$rawId',

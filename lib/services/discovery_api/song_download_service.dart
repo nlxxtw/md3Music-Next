@@ -117,6 +117,14 @@ class SongDownloadService {
         host.contains('tencentmusic')) {
       return {'User-Agent': chromeUa, 'Referer': 'https://y.qq.com/'};
     }
+    if (host.contains('music.126.net') ||
+        host.contains('163.com') ||
+        host.contains('netease')) {
+      return {'User-Agent': chromeUa, 'Referer': 'https://music.163.com/'};
+    }
+    if (host.contains('qqovo')) {
+      return {'User-Agent': chromeUa, 'Referer': 'https://music.qqovo.cn/'};
+    }
     return {'User-Agent': chromeUa};
   }
 

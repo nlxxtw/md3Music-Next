@@ -3446,7 +3446,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 统一下发通知/MediaSession 元数据。artUrlOverride 非空时优先用作封面源。
   void _pushNotification(Song song, bool isFavorited, {String? artUrlOverride}) {
-    final artUrl = artUrlOverride ?? song.artworkUri;
+    var artUrl = artUrlOverride ?? song.artworkUri;
+    // 网易等偶发 http:// 封面：Android 禁明文，统一升 https，与 DiscoveryCoverImage 一致。
+    if (artUrl != null && artUrl.startsWith('http://')) {
+      artUrl = 'https://${artUrl.substring(7)}';
+    }
     // 封面链路日志：记录最终下发给原生的封面源（便于区分是否走本地缓存/在线 URL）
     debugPrint('[PlayerProvider] 下发通知封面 artUrl=$artUrl '
         'override=${artUrlOverride != null} fallback=${song.localPath}');

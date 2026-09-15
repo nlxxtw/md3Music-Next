@@ -174,13 +174,14 @@ class AudioPlaybackService : Service() {
             var bmp: Bitmap? = null
             if (source.startsWith("http://") || source.startsWith("https://")) {
                 try {
-                    val conn = java.net.URL(source).openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 5000
-                    conn.readTimeout = 10000
-                    conn.instanceFollowRedirects = true
+                    val conn = CoverHttp.open(source)
                     try {
                         bmp = BitmapFactory.decodeStream(conn.inputStream)
-                        if (bmp != null && !bmp.isRecycled) coverMemoryCache[source] = bmp
+                        if (bmp != null && !bmp.isRecycled) {
+                            val key = CoverHttp.normalizeUrl(source) ?: source
+                            coverMemoryCache[key] = bmp
+                            if (key != source) coverMemoryCache[source] = bmp
+                        }
                     } finally {
                         conn.disconnect()
                     }
@@ -265,10 +266,7 @@ class AudioPlaybackService : Service() {
                 // 网路线程下载并写内存 + 磁盘缓存
                 Thread {
                     try {
-                        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                        conn.connectTimeout = 3000
-                        conn.readTimeout = 5000
-                        conn.instanceFollowRedirects = true
+                        val conn = CoverHttp.open(url, connectMs = 3000, readMs = 5000)
                         try {
                             val bmp = BitmapFactory.decodeStream(conn.inputStream)
                             if (bmp != null && !bmp.isRecycled) {
@@ -282,11 +280,13 @@ class AudioPlaybackService : Service() {
                                     )
                                 }
                                 if (small !== bmp) bmp.recycle()
-                                coverMemoryCache[url] = small
+                                val key = CoverHttp.normalizeUrl(url) ?: url
+                                coverMemoryCache[key] = small
+                                if (key != url) coverMemoryCache[url] = small
                                 try {
                                     val dir = File(context.cacheDir, COVER_CACHE_DIR)
                                     if (!dir.exists()) dir.mkdirs()
-                                    val cf = File(dir, url.hashCode().toString() + ".jpg")
+                                    val cf = File(dir, key.hashCode().toString() + ".jpg")
                                     if (!cf.exists()) {
                                         FileOutputStream(cf).use { out ->
                                             small.compress(Bitmap.CompressFormat.JPEG, 88, out)
@@ -1745,16 +1745,15 @@ class AudioPlaybackService : Service() {
         // 网路线程下载并写入缓存，不阻塞播放
         Thread {
             try {
-                val conn = java.net.URL(artUrl).openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 3000
-                conn.readTimeout = 5000
-                conn.instanceFollowRedirects = true
+                val conn = CoverHttp.open(artUrl, connectMs = 3000, readMs = 5000)
                 try {
                     val bmp = BitmapFactory.decodeStream(conn.inputStream)
                     if (bmp != null) {
                         val small = resizeBitmap(bmp, 512)
                         if (small !== bmp) bmp.recycle()
-                        putCoverCache(artUrl, small)
+                        val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
+                        putCoverCache(key, small)
+                        if (key != artUrl) putCoverCache(artUrl, small)
                         Log.d(TAG, "封面预取完成 url=$artUrl")
                     }
                 } finally {
@@ -1774,22 +1773,22 @@ class AudioPlaybackService : Service() {
     private fun loadArtworkBitmap(artUri: String, fallbackFilePath: String?): Bitmap? {
         // 1. http(s):// 在线封面（方案A：优先本地缓存，命中免下载秒显）
         if (artUri.startsWith("http://") || artUri.startsWith("https://")) {
+            val normalized = CoverHttp.normalizeUrl(artUri) ?: artUri
             // 缓存命中：内存或磁盘，直接返回（切歌空档的根治关键）
-            getCachedCover(artUri)?.let { return it }
+            getCachedCover(normalized)?.let { return it }
+            if (normalized != artUri) getCachedCover(artUri)?.let { return it }
             return try {
                 // P0: HttpURLConnection 显式设置超时，避免慢响应导致线程永久阻塞
-                val conn = java.net.URL(artUri).openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 5000
-                conn.readTimeout = 10000
-                conn.instanceFollowRedirects = true
+                val conn = CoverHttp.open(normalized)
                 try {
                     val bmp = BitmapFactory.decodeStream(conn.inputStream)
                     if (bmp != null) {
-                        Log.i(TAG, "封面 http 下载成功 ${bmp.width}x${bmp.height} url=$artUri")
+                        Log.i(TAG, "封面 http 下载成功 ${bmp.width}x${bmp.height} url=$normalized")
                         // 写入本地缓存，下次切到同歌秒显
-                        putCoverCache(artUri, bmp)
+                        putCoverCache(normalized, bmp)
+                        if (normalized != artUri) putCoverCache(artUri, bmp)
                     } else {
-                        Log.w(TAG, "封面 http 解码失败(响应非图片/空流) url=$artUri")
+                        Log.w(TAG, "封面 http 解码失败(响应非图片/空流) url=$normalized")
                     }
                     bmp
                 } finally {
@@ -1797,7 +1796,7 @@ class AudioPlaybackService : Service() {
                 }
             } catch (e: Exception) {
                 // 封面链路日志：网络波动/超时会造成这里 null→MediaSession 无 bitmap，正是偶现失效点
-                Log.w(TAG, "封面 http 下载异常 ${e.message} url=$artUri")
+                Log.w(TAG, "封面 http 下载异常 ${e.message} url=$normalized")
                 null
             }
         }
@@ -1922,6 +1921,7 @@ class AudioPlaybackService : Service() {
         // 缓存稳定歌曲元数据。蓝牙歌词不能再覆盖 SystemUI 正在消费的同一 MediaSession。
         originalTitle = title
         originalArtist = artist
+        val previousArtUrl = lastArtUrl
         lastArtUrl = artUrl
         lastIsPlaying = isPlaying
         // 同步「正在播放」状态，供锁屏歌词广播（ACTION_SCREEN_OFF）判断
@@ -1960,6 +1960,12 @@ class AudioPlaybackService : Service() {
 
         // 封面加载：支持 http(s):// / content:// / local:// / file:// / 文件路径
         val effectiveArtUrl = artUrl ?: fallbackFilePath
+        val normalizedArt = CoverHttp.normalizeUrl(effectiveArtUrl) ?: effectiveArtUrl
+        val sameArt = !normalizedArt.isNullOrEmpty() &&
+            (normalizedArt == CoverHttp.normalizeUrl(previousArtUrl) ||
+                normalizedArt == previousArtUrl ||
+                effectiveArtUrl == previousArtUrl)
+        val reuseBitmap = lastArtBitmap
 
         // 先立即进入前台（保活通知常驻，避免 startForegroundService 的 5 秒限制；
         // 不再 DETACH，防止服务被系统降级导致后台网络受限）；
@@ -1983,10 +1989,14 @@ class AudioPlaybackService : Service() {
         // 导致封面永远停在无封面。改为封面加载成功后再一次性 setMetadata(带 bitmap)，
         // 使 SystemUI 首次拿到 metadata 即带封面；仅封面失败/无源时才发无封面兜底。
         if (!effectiveArtUrl.isNullOrEmpty()) {
+            // 息屏再开：同一首歌已有封面则跳过重下，避免网易无 Referer 超时拖垮主线程/线程池。
+            if (sameArt && reuseBitmap != null && !reuseBitmap.isRecycled) {
+                Log.d(TAG, "封面未变，跳过重下 effectiveArtUrl=$effectiveArtUrl")
+            } else {
             Log.d(TAG, "触发后台封面加载 effectiveArtUrl=$effectiveArtUrl fallback=$fallbackFilePath")
             Thread {
                 try {
-                    val originalBitmap = loadArtworkBitmap(effectiveArtUrl, fallbackFilePath)
+                    val originalBitmap = loadArtworkBitmap(effectiveArtUrl!!, fallbackFilePath)
                     if (originalBitmap != null) {
                         if (!isMetadataRequestCurrent(requestMediaId, requestGeneration)) {
                             Log.i(
@@ -2047,6 +2057,7 @@ class AudioPlaybackService : Service() {
                         requestMediaId, requestGeneration, displayTitle, displayArtist)
                 }
             }.start()
+            }
         } else {
             Log.w(TAG, "无有效封面源(artUrl、fallback 均为空)，MediaSession 无封面")
             // 无封面源：同步标题到媒体3会话（保证标题/艺术家正确）

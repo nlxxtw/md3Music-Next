@@ -658,9 +658,7 @@ class LockScreenLyricView(context: Context) : View(context) {
     private fun loadArtBitmap(artUrl: String?, fallbackFilePath: String?): Bitmap? {
         if (artUrl != null && (artUrl.startsWith("http://") || artUrl.startsWith("https://"))) {
             try {
-                val conn = URL(artUrl).openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000; conn.readTimeout = 10000
-                conn.instanceFollowRedirects = true
+                val conn = CoverHttp.open(artUrl)
                 return try { BitmapFactory.decodeStream(conn.inputStream) } finally { conn.disconnect() }
             } catch (_: Exception) { null }
         }

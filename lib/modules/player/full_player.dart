@@ -1700,17 +1700,6 @@ class _FullPlayerState extends State<FullPlayer>
               onPressed: _collapseByButton,
             ),
             const Spacer(),
-            if (playerProvider.currentSong?.isOnline == true)
-              IconButton(
-                icon: const Icon(Icons.download_outlined),
-                tooltip: '下载歌曲',
-                onPressed: () {
-                  final s = playerProvider.currentSong;
-                  if (s != null) {
-                    SongDownloadService.pickAndDownload(context, s);
-                  }
-                },
-              ),
             // MD3E v2: 顶部栏右侧 FLAC 质量徽章，点击复用 _showQualityDialog
             _buildQualityPill(playerProvider),
             // 睡眠药丸：只订阅剩余时间独立通道，每秒走字不再触发整页重建

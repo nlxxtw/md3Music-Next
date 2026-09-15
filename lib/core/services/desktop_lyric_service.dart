@@ -512,7 +512,11 @@ class DesktopLyricService {
       isPlaying: player?.isPlaying ?? false,
       title: song?.displayName ?? '',
       artist: song?.artist ?? '',
-      artUrl: song?.artworkUri,
+      artUrl: () {
+        final a = song?.artworkUri;
+        if (a == null) return null;
+        return a.startsWith('http://') ? 'https://${a.substring(7)}' : a;
+      }(),
       fallbackFilePath: song?.localPath,
       fontSize: prefs.fontSize,
       fontWeight: prefs.fontWeightValue,

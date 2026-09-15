@@ -7,6 +7,7 @@ import 'package:palette_generator/palette_generator.dart';
 
 import '../services/local_artwork_cache.dart';
 import '../services/media_store_service.dart';
+import '../../widgets/discovery_cover_image.dart';
 
 /// 从专辑封面提取单个主色调，供歌词「动态字体颜色」、全局「封面动态取色」等场景使用。
 ///
@@ -60,8 +61,12 @@ class ArtworkColorExtractor {
   static Future<PaletteGenerator?> loadPalette(String url) async {
     try {
       if (url.startsWith('http://') || url.startsWith('https://')) {
+        final imageUrl = DiscoveryCoverImage.httpsify(url);
         return PaletteGenerator.fromImageProvider(
-          CachedNetworkImageProvider(url),
+          CachedNetworkImageProvider(
+            imageUrl,
+            headers: DiscoveryCoverImage.headersFor(imageUrl),
+          ),
           maximumColorCount: 12,
         );
       }

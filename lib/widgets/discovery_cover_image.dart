@@ -57,6 +57,14 @@ class DiscoveryCoverImage extends StatelessWidget {
         'Referer': 'https://music.163.com/',
       };
     }
+    if (host.contains('qqovo')) {
+      return {
+        'User-Agent':
+            'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+        'Referer': 'https://music.qqovo.cn/',
+      };
+    }
     return null;
   }
 

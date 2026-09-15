@@ -1913,17 +1913,6 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
               onPressed: _collapseByButton,
             ),
             const Spacer(),
-            if (playerProvider.currentSong?.isOnline == true)
-              IconButton(
-                icon: const Icon(Icons.download_outlined, color: Colors.white),
-                tooltip: '下载歌曲',
-                onPressed: () {
-                  final s = playerProvider.currentSong;
-                  if (s != null) {
-                    SongDownloadService.pickAndDownload(context, s);
-                  }
-                },
-              ),
             // AM v2: 顶部栏右侧 FLAC 质量徽章，点击复用 _showQualityDialog，
             // 长按呼出 _showVolumeDialog（与 MD 风格统一）
             _buildQualityPill(playerProvider),
