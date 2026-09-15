@@ -1,11 +1,11 @@
 {
   "latestVersion": "13.3.21",
-  "latestBuild": 3022,
+  "latestBuild": 3023,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": true,
   "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.21",
   "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.21/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "网易封面写入 MediaItem、漫游卡 pic 兜底；息屏再开封面失败冷却；去掉播放页重复音质角标。"
+  "message": "MD3Music v13.3.21 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
 }
