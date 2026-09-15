@@ -16,6 +16,10 @@ class FavoritesProvider extends ChangeNotifier {
   Set<String> get favoriteIds => _favoriteIds;
   bool get isLoading => _isLoading;
 
+  /// QQ / 汽水本地收藏（不进酷狗云端「我喜欢」）。
+  List<Song> get remoteDiscoveryFavorites =>
+      _favorites.where((s) => s.isRemoteDiscovery).toList(growable: false);
+
   FavoritesProvider() {
     loadFavorites();
   }
@@ -145,9 +149,12 @@ class FavoritesProvider extends ChangeNotifier {
       _favorites.removeWhere((s) => s.id == song.id);
       await _repository.removeFavorite(song.id);
     } else {
-      _favoriteIds.add(song.id);
-      _favorites.insert(0, song);
-      await _repository.addFavorite(song);
+      final saved = remoteOnly
+          ? song.copyWith(isLocallyFavorited: true)
+          : song;
+      _favoriteIds.add(saved.id);
+      _favorites.insert(0, saved);
+      await _repository.addFavorite(saved);
 
       if (isLoggedIn && !remoteOnly) {
         final data =

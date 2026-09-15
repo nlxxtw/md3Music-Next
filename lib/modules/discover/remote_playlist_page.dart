@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../data/models/song.dart';
 import '../../providers/discover_source_provider.dart';
+import '../../providers/favorites_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
 import '../../widgets/scroll_aware_app_bar.dart';
@@ -106,6 +107,20 @@ class _RemotePlaylistPageState extends State<RemotePlaylistPage> {
                       ),
                       title: Text(s.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(s.artist, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: Consumer<FavoritesProvider>(
+                        builder: (context, fav, _) {
+                          final liked = fav.isFavorite(s.id);
+                          return IconButton(
+                            icon: Icon(
+                              liked ? Icons.favorite : Icons.favorite_border,
+                              color: liked
+                                  ? Theme.of(context).colorScheme.error
+                                  : null,
+                            ),
+                            onPressed: () => fav.toggleFavorite(s),
+                          );
+                        },
+                      ),
                       onTap: () {
                         context.read<PlayerProvider>().playOnlinePlaylist(_songs, i);
                       },

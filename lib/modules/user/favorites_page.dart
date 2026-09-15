@@ -17,7 +17,9 @@ import '../../services/kugou_api/kugou_api_client.dart';
 import '../../services/kugou_api/kugou_models.dart';
 import '../artist/artist_detail_page.dart';
 import '../playlist/playlist_page.dart';
+import '../../providers/favorites_provider.dart';
 import 'import_playlist_page.dart';
+import 'remote_favorites_page.dart';
 import 'widgets/offline_banner.dart';
 
 class FavoritesPage extends StatefulWidget {
@@ -901,38 +903,51 @@ class _FavoritesPageState extends State<FavoritesPage>
       return const Center(child: M3ELoadingIndicator());
     }
 
+    // 酷狗歌单为空时仍展示「发现收藏」入口（QQ/汽水本地收藏）
     if (_playlists.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+      return M3EPullToRefreshIndicator(
+        onRefresh: () => _loadPlaylists(forceNoCache: true, showLoading: false),
+        child: ListView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.only(
+            top: 8,
+            bottom: 8 + MediaQuery.paddingOf(context).bottom,
+          ),
           children: [
+            _buildDiscoveryFavoritesTile(),
+            const SizedBox(height: 48),
             Icon(
               Icons.queue_music,
               size: 64,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurfaceVariant
+                  .withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
-              '还没有歌单',
+              '还没有酷狗歌单',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
             const SizedBox(height: 8),
             Text(
               '去发现页找找喜欢的歌单吧',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
             ),
             const SizedBox(height: 16),
-            // 空列表时分组标题不渲染，这里补一个新建歌单入口
-            FilledButton.tonalIcon(
-              onPressed: _showCreatePlaylistDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('新建歌单'),
+            Center(
+              child: FilledButton.tonalIcon(
+                onPressed: _showCreatePlaylistDialog,
+                icon: const Icon(Icons.add),
+                label: const Text('新建歌单'),
+              ),
             ),
           ],
         ),
@@ -961,6 +976,7 @@ class _FavoritesPageState extends State<FavoritesPage>
             bottom: 8 + MediaQuery.paddingOf(context).bottom,
           ),
           children: [
+            _buildDiscoveryFavoritesTile(),
             // 分组标题常驻（即使暂无自建歌单），保证右侧「+」新建入口始终可达
             _GroupSection(
               title: '我创建的歌单',
@@ -1037,6 +1053,41 @@ class _FavoritesPageState extends State<FavoritesPage>
           ],
         ),
       ),
+    );
+  }
+
+  /// QQ / 汽水本地收藏入口（本机持久化，不同步酷狗）。
+  Widget _buildDiscoveryFavoritesTile() {
+    final cs = Theme.of(context).colorScheme;
+    return Consumer<FavoritesProvider>(
+      builder: (context, fav, _) {
+        final count = fav.remoteDiscoveryFavorites.length;
+        return Card(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          elevation: 0,
+          color: cs.secondaryContainer.withValues(alpha: 0.45),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: cs.secondaryContainer,
+              child: Icon(Icons.explore, color: cs.onSecondaryContainer),
+            ),
+            title: const Text('发现收藏'),
+            subtitle: Text(
+              count == 0
+                  ? 'QQ / 汽水红心收藏 · 仅本机'
+                  : '$count 首 · QQ / 汽水 · 仅本机',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const RemoteFavoritesPage(),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
