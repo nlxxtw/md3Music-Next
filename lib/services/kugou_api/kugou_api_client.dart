@@ -1432,6 +1432,8 @@ class KugouApiClient {
     String? lyricId;
     String? lyricAccesskey;
     Map<String, dynamic>? searchResult;
+    // 收集全部候选，供主候选无翻译时回退扫描。
+    final List<Map<String, dynamic>> lyricCandidates = [];
 
     // 从 /search/lyric 响应的 candidates 中取第一个候选，解析 lyricId/accesskey。
     void resolveCandidate(Map<String, dynamic>? result) {
@@ -1441,14 +1443,18 @@ class KugouApiClient {
         final first = candidates.first as Map<String, dynamic>;
         lyricId = first['id']?.toString();
         lyricAccesskey = first['accesskey']?.toString();
+        lyricCandidates
+          ..clear()
+          ..addAll(candidates.whereType<Map<String, dynamic>>());
       }
     }
 
     // 1) 有 hash 时先精确搜索（在线歌曲通常直接命中官方歌词）
+    // man=yes 返回完整候选（含独立翻译 id）
     if (hash.isNotEmpty) {
       final byHash = await _get(
         KugouEndpoints.searchLyric,
-        queryParameters: {'hash': hash.toLowerCase()},
+        queryParameters: {'hash': hash.toLowerCase(), 'man': 'yes'},
       );
       if (byHash != null && _hasCandidates(byHash)) {
         searchResult = byHash;
@@ -1476,7 +1482,7 @@ class KugouApiClient {
     if (lyricId == null && songName != null && songName.isNotEmpty) {
       searchResult = await _get(
         KugouEndpoints.searchLyric,
-        queryParameters: {'keywords': songName},
+        queryParameters: {'keywords': songName, 'man': 'yes'},
       );
       resolveCandidate(searchResult);
     }
@@ -1500,7 +1506,23 @@ class KugouApiClient {
       ]);
       final lrcJson = results[0];
       final krcJson = results[1];
-      return mergeLyricResponses(lrcJson, krcJson);
+      final merged = mergeLyricResponses(lrcJson, krcJson);
+      if (merged == null) return null;
+      // 主候选无翻译 → 从其他候选回退补翻译（上游 v5.6）
+      final trans = merged.translatedContent;
+      if (trans == null || trans.trim().isEmpty) {
+        final fallback = await _resolveTranslationFallback(lyricCandidates);
+        if (fallback.translation != null) {
+          return KugouLyric(
+            content: merged.content,
+            decodedContent: merged.decodedContent,
+            decodedKrcContent: merged.decodedKrcContent,
+            translatedContent: fallback.translation,
+            romaContent: merged.romaContent ?? fallback.roma,
+          );
+        }
+      }
+      return merged;
     }
 
     // 单请求路径（显式 fmt=krc 等非 lrc 场景）
@@ -1538,6 +1560,33 @@ class KugouApiClient {
     }
   }
 
+  /// 主歌词候选无中文翻译时的翻译回退（上游 v5.6）。
+  Future<({String? translation, String? roma})> _resolveTranslationFallback(
+    List<Map<String, dynamic>> candidates,
+  ) async {
+    if (candidates.length < 2) return (translation: null, roma: null);
+    final seen = <String>{};
+    for (final c in candidates.skip(1)) {
+      final id = c['id']?.toString();
+      if (id == null || !seen.add(id)) continue;
+      final acc = c['accesskey']?.toString();
+      try {
+        final krcJson = await _fetchLyricContent(id, acc, 'krc', true);
+        if (krcJson == null) continue;
+        final krcContent = krcJson['decodeContent']?.toString() ??
+            krcJson['decoded_krc_content']?.toString() ??
+            krcJson['krcContent']?.toString();
+        if (krcContent == null) continue;
+        final extracted = _extractTranslationFromKrc(krcContent);
+        if (extracted.translation != null &&
+            extracted.translation!.isNotEmpty) {
+          return extracted;
+        }
+      } catch (_) {}
+    }
+    return (translation: null, roma: null);
+  }
+
   /// hash 找回：hash 搜索 + 关键词搜索都失败时，用歌曲搜索接口找回正确的
   /// 酷狗 hash，再用该 hash 查一次歌词。解决歌曲条目 hash 失效导致歌词空白。
   ///
@@ -1553,7 +1602,7 @@ class KugouApiClient {
       if (correctHash.isEmpty) return null;
       final lyricSearch = await _get(
         KugouEndpoints.searchLyric,
-        queryParameters: {'hash': correctHash.toLowerCase()},
+        queryParameters: {'hash': correctHash.toLowerCase(), 'man': 'yes'},
       );
       if (lyricSearch != null) {
         final candidates = lyricSearch['candidates'];

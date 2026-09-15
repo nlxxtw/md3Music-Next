@@ -176,6 +176,12 @@ class FloatingLyricService : Service() {
         instance = this
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        // 横竖屏切换后重算悬浮窗宽度/纵向位置，避免错位（上游 v5.6）。
+        rootView?.post { relayoutForOrientation() }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!hasOverlayPermission()) {
             Log.w(TAG, "Overlay permission revoked; ignoring floating lyric update")
@@ -439,6 +445,26 @@ class FloatingLyricService : Service() {
 
     private fun sp(v: Float): Float =
         v * resources.displayMetrics.scaledDensity
+
+    /// 横竖屏切换后按当前屏宽重算悬浮窗（上游 v5.6）。
+    private fun relayoutForOrientation() {
+        val root = rootView ?: return
+        val p = params ?: return
+        val wm = windowManager ?: return
+        val newWidth = resources.displayMetrics.widthPixels - dp(32)
+        val newMaxWidth = newWidth - dp(40)
+        p.width = newWidth
+        p.y = p.y.coerceIn(0, resources.displayMetrics.heightPixels - dp(120))
+        lyricText1?.maxWidth = newMaxWidth
+        lyricText2?.maxWidth = newMaxWidth
+        lyricText1?.requestLayout()
+        lyricText2?.requestLayout()
+        root.requestLayout()
+        try {
+            wm.updateViewLayout(root, p)
+        } catch (_: Exception) {
+        }
+    }
 
     private fun createFloatingView(): Boolean {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager

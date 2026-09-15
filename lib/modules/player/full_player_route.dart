@@ -54,6 +54,19 @@ bool shouldExpandPlayer({
 /// 当前栈顶的播放器路由（拖拽复用 / 防重复 push）。
 DraggablePlayerRoute? activePlayerRoute;
 
+/// 统一打开全屏播放页：已在栈中则回退到它，禁止重复 push（上游 v5.6）。
+void openFullPlayer(BuildContext context) {
+  final NavigatorState navigator = Navigator.of(context);
+  final DraggablePlayerRoute? existing = activePlayerRoute;
+  if (existing != null) {
+    if (existing.isActive && !existing.isCurrent) {
+      navigator.popUntil((Route<dynamic> route) => identical(route, existing));
+    }
+    return;
+  }
+  navigator.push(fullPlayerRoute(context));
+}
+
 /// 拖拽展开进行中标志（控制页面内跟手覆盖层显示）。
 /// 覆盖层位于 Navigator 之上，拖拽期间跟随手指显示 FullPlayer 预览；
 /// 松手展开时隐藏覆盖层并由路由接管显示。

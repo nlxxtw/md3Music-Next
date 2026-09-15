@@ -36,6 +36,7 @@ import 'kugou_provider.dart';
 import '../services/kugou_api/kugou_api_client.dart';
 import '../services/kugou_api/kugou_models.dart';
 import '../services/discovery_api/discovery_api_client.dart';
+import 'position_rewind_gate.dart';
 
 enum AppLoopMode { off, one, all }
 
@@ -199,9 +200,21 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool get shuffleEnabled => _shuffleEnabled;
   double get volume => _volume;
 
+  /// 换源装载期间的「位置回退闸门」（见 [_updatePosition]、[PositionRewindGate]）。
+  final PositionRewindGate _positionRewindGate = PositionRewindGate();
+
+  @visibleForTesting
+  PositionRewindGate get positionRewindGateForTest => _positionRewindGate;
+
+  @visibleForTesting
+  void debugFeedPositionForTest(Duration value) => _updatePosition(value);
+
   /// 更新播放位置并同步到 [positionNotifier]。
   /// 高频路径（positionStream ~200ms）只通知 positionNotifier，不触发全量 notifyListeners。
+  ///
+  /// 换源时 [setUrl] 会短暂回退到 0；闸门开启时丢弃小于下限的采样，避免进度/歌词闪回。
   void _updatePosition(Duration value) {
+    if (_positionRewindGate.shouldSuppress(value)) return;
     if (_position == value) return;
     _position = value;
     positionNotifier.value = value;
@@ -2165,6 +2178,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       _audioService.abortCrossfade();
       _resetCrossfadePrepared();
     }
+    // 换源回退抑制：setUrl 后位置从 0 重计，有 seek 目标时丢弃假回退采样。
+    final bool gateRewind = seekTo != null && seekTo > Duration.zero;
+    if (gateRewind) _positionRewindGate.arm(seekTo!);
+    try {
     // 音量均衡：把当前歌曲的响度元数据带给播放器（无响度则旁路为 0 dB）。
     // 远程发现无可靠响度，勿沿用上一首把声音压没。
     await _audioService.setUrl(
@@ -2186,6 +2203,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (state.processingState == just_audio.ProcessingState.ready) {
         if (seekTo != null && seekTo > Duration.zero) {
           await _audioService.seek(seekTo);
+          if (gateRewind) {
+            _positionRewindGate.disarm();
+            _updatePosition(seekTo);
+          }
         }
         if (playAfter) {
           await _audioService.play();
@@ -2197,9 +2218,16 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // 超时仍尝试 seek/play,避免完全卡住
     if (seekTo != null && seekTo > Duration.zero) {
       await _audioService.seek(seekTo);
+      if (gateRewind) {
+        _positionRewindGate.disarm();
+        _updatePosition(seekTo);
+      }
     }
     if (playAfter) {
       await _audioService.play();
+    }
+    } finally {
+      if (gateRewind) _positionRewindGate.disarm();
     }
   }
 
@@ -2531,16 +2559,18 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       PlayerProvider.onPlaybackSourceStopped?.call(_currentSong!.id);
     }
 
-    if (_loopMode == AppLoopMode.one) {
-      await seek(Duration.zero);
-      if (autoPlay) await _audioService?.play();
-      return;
-    }
-
-    // 已到末尾且非列表循环,停止播放(不静默跳到下一首)
+    // 单曲循环：手动「下一首」必须能切歌（自动重播由 completed 负责）。
+    // 多首歌时经下方循环绕回队首，仅一首时重播当前曲。
     if (_currentIndex >= _playlist.length - 1 && _loopMode != AppLoopMode.all) {
-      await _audioService?.pause();
-      return;
+      if (_loopMode != AppLoopMode.one) {
+        await _audioService?.pause();
+        return;
+      }
+      if (_playlist.length == 1) {
+        await seek(Duration.zero);
+        if (autoPlay) await _audioService?.play();
+        return;
+      }
     }
 
     final startIndex = _currentIndex;

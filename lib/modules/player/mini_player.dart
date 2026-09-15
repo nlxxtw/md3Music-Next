@@ -311,7 +311,7 @@ class _MiniPlayerState extends State<MiniPlayer>
               // 上滑展开识别后（含 up 后 sweep 阶段）不响应点击
               if (_dragActivated) return;
               if (activePlayerRoute?.isCurrent ?? false) return;
-              Navigator.of(context).push(fullPlayerRoute(context));
+              openFullPlayer(context);
             },
             // 水平滑动切歌（受设置开关控制）
             onHorizontalDragStart:

@@ -8,6 +8,7 @@ import '../../providers/favorites_provider.dart';
 import '../../providers/kugou_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../services/kugou_api/kugou_models.dart';
+import '../player/full_player_route.dart';
 import '_fm_refill.dart';
 import 'personal_fm_core.dart';
 
@@ -232,7 +233,7 @@ class _PersonalFmSectionState extends State<PersonalFmSection> {
   /// 交叉淡入、md / AM 两套播放页的选择）。
   void _openPlayerDetail() {
     if (activePlayerRoute?.isCurrent ?? false) return;
-    Navigator.of(context).push(fullPlayerRoute(context));
+    openFullPlayer(context);
   }
 
   Future<void> _togglePlay() async {

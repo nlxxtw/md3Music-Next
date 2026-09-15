@@ -1230,7 +1230,7 @@ class _MainLayoutState extends State<_MainLayout>
 
     // 播放器页已在栈顶（如播放页开着时再次外部打开另一首歌）则只切歌不重复 push
     if (activePlayerRoute == null) {
-      Navigator.of(context).push(fullPlayerRoute(context));
+      openFullPlayer(context);
     }
   }
 
