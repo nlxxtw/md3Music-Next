@@ -91,12 +91,8 @@ jobs:
             | tail -1)
 
           # 也读 main/update.json，避免 pubspec 未回写导致 versionCode 卡在保底值
-          UPDATE_CODE=$(python3 - <<'PY'
-import json, pathlib
-p = pathlib.Path("update.json")
-print(int(json.load(p.open(encoding="utf-8")).get("latestBuild") or 0) if p.exists() else 0)
-PY
-)
+          # 注意：必须单行 -c，heredoc 在 workflow YAML 里会破坏缩进解析
+          UPDATE_CODE=$(python3 -c 'import json,pathlib; p=pathlib.Path("update.json"); print(int(json.load(p.open(encoding="utf-8")).get("latestBuild") or 0) if p.exists() else 0)')
 
           if [ -n "$PREV_MAX_CODE" ]; then
             VERSION_CODE=$((PREV_MAX_CODE + 1))
