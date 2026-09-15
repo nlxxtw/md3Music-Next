@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/discovery_api/discovery_api_client.dart';
 
-enum DiscoverMusicSource { kugou, qq, soda }
+enum DiscoverMusicSource { kugou, qq, soda, netease }
 
 extension DiscoverMusicSourceX on DiscoverMusicSource {
   String get label {
@@ -14,6 +14,8 @@ extension DiscoverMusicSourceX on DiscoverMusicSource {
         return 'QQ';
       case DiscoverMusicSource.soda:
         return '汽水';
+      case DiscoverMusicSource.netease:
+        return '网易云';
     }
   }
 
@@ -25,6 +27,8 @@ extension DiscoverMusicSourceX on DiscoverMusicSource {
         return 'qq';
       case DiscoverMusicSource.soda:
         return 'soda';
+      case DiscoverMusicSource.netease:
+        return 'netease';
     }
   }
 }

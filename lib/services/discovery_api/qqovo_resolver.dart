@@ -39,24 +39,87 @@ class QqovoResolver {
       return const ['128', '320'];
     }
     // qishui / 汽水：lossless/exhigh 为高码率 AAC-M4A
+    if (server == 'qishui') {
+      if (wantLossless) {
+        return const [
+          'lossless',
+          'hires',
+          'exhigh',
+          '320',
+          'higher',
+          'standard',
+          '128',
+        ];
+      }
+      if (wantHigh) {
+        return const ['exhigh', '320', 'higher', 'standard', '128'];
+      }
+      return const ['standard', '128', 'exhigh'];
+    }
+    // netease
     if (wantLossless) {
       return const [
-        'lossless',
+        'jymaster',
+        'sky',
         'hires',
+        'lossless',
         'exhigh',
-        '320',
         'higher',
         'standard',
-        '128',
       ];
     }
     if (wantHigh) {
-      return const ['exhigh', '320', 'higher', 'standard', '128'];
+      return const ['exhigh', 'higher', 'standard', '128'];
     }
-    return const ['standard', '128', 'exhigh'];
+    return const ['standard', 'higher', 'exhigh'];
+  }
+
+  /// 通用 meting 请求（search / playlist / song 等），返回 JSON。
+  Future<dynamic> meting({
+    required String server,
+    required String type,
+    required String id,
+    String? quality,
+  }) async {
+    final songId = id.trim();
+    if (songId.isEmpty) return null;
+    for (final base in _bases) {
+      try {
+        final session = await _ensureSession(base);
+        if (session == null) continue;
+        final q = quality == null ? '' : '&quality=$quality';
+        final url =
+            '$base/api/meting?server=$server&type=$type&id=$songId$q';
+        final resp = await _dio.get(
+          url,
+          options: Options(headers: _signedHeaders(base, url, session.key)),
+        );
+        return resp.data;
+      } catch (e) {
+        debugPrint('[QqovoResolver] meting $server/$type failed: $e');
+        _sessions.remove(base);
+      }
+    }
+    return null;
   }
 
   Future<String?> resolve({
+    required String server,
+    required String id,
+    List<String>? qualities,
+    String preference = '320',
+  }) async {
+    return (await resolveHit(
+      server: server,
+      id: id,
+      qualities: qualities,
+      preference: preference,
+    ))
+        ?.url;
+  }
+
+  /// 汽水二次解析会带 [QqovoHit.auth]（AES-CTR 密钥），直链本身是加密 MP4。
+  Future<QqovoHit?> resolveHit({
     required String server,
     required String id,
     List<String>? qualities,
@@ -68,18 +131,18 @@ class QqovoResolver {
         qualities ?? qualitiesFor(server: server, preference: preference);
 
     for (final base in _bases) {
-      final url = await _resolveOnBase(
+      final hit = await _resolveOnBase(
         base: base,
         server: server,
         songId: songId,
         qualities: tryQualities,
       );
-      if (url != null) return url;
+      if (hit != null) return hit;
     }
     return null;
   }
 
-  Future<String?> _resolveOnBase({
+  Future<QqovoHit?> _resolveOnBase({
     required String base,
     required String server,
     required String songId,
@@ -99,8 +162,9 @@ class QqovoResolver {
         final data = trackResp.data;
         if (data is! Map) continue;
 
-        // QQ：meting 直接给播放直链；汽水：先给 source url 再二次取流
+        // QQ：meting 直接给播放直链；汽水：先给 source url 再二次取流（含 auth）
         var playUrl = '${data['url'] ?? ''}';
+        var auth = '${data['auth'] ?? ''}'.trim();
         if (playUrl.startsWith('http') &&
             (playUrl.contains('qqovo.') || playUrl.contains('/api/'))) {
           final sourceResp = await _dio.get(
@@ -111,12 +175,16 @@ class QqovoResolver {
           final sourceData = sourceResp.data;
           if (sourceData is Map) {
             playUrl = '${sourceData['url'] ?? ''}';
+            final nestedAuth = '${sourceData['auth'] ?? ''}'.trim();
+            if (nestedAuth.isNotEmpty) auth = nestedAuth;
           }
         }
         if (playUrl.startsWith('http://')) {
           playUrl = 'https://${playUrl.substring(7)}';
         }
-        if (playUrl.startsWith('http')) return playUrl;
+        if (playUrl.startsWith('http')) {
+          return QqovoHit(url: playUrl, auth: auth.isEmpty ? null : auth);
+        }
       }
     } catch (e) {
       debugPrint('[QqovoResolver] $base $server/$songId failed: $e');
@@ -189,6 +257,12 @@ class QqovoResolver {
     return '${h(0)}${h(1)}${h(2)}${h(3)}-${h(4)}${h(5)}-${h(6)}${h(7)}-'
         '${h(8)}${h(9)}-${h(10)}${h(11)}${h(12)}${h(13)}${h(14)}${h(15)}';
   }
+}
+
+class QqovoHit {
+  const QqovoHit({required this.url, this.auth});
+  final String url;
+  final String? auth;
 }
 
 class _QqovoSession {

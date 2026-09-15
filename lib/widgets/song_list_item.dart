@@ -9,6 +9,7 @@ import '../modules/player/mv_player_page.dart';
 import '../providers/favorites_provider.dart';
 import '../providers/local_favorites_provider.dart';
 import '../providers/player_provider.dart';
+import '../services/discovery_api/song_download_service.dart';
 import 'playing_spectrum_indicator.dart';
 import 'smart_artwork_image.dart';
 
@@ -73,6 +74,16 @@ class SongListItem extends StatelessWidget {
               ),
             // 可选扩展：私有构建注入的额外菜单条目（默认无）
             ...?SongListItem.extraMenuTilesBuilder?.call(ctx, song),
+            if (song.isOnline)
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('下载歌曲'),
+                subtitle: const Text('可选择音质'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  SongDownloadService.pickAndDownload(context, song);
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.playlist_add),
               title: const Text('下一首播放'),
@@ -145,18 +156,53 @@ class SongListItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    song.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w500,
-                      color: isCurrentSong ? colorScheme.primary : null,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          song.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w500,
+                            color: isCurrentSong ? colorScheme.primary : null,
+                          ),
+                        ),
+                      ),
+                      if (song.qualityBadge != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: colorScheme.primary.withValues(alpha: 0.7),
+                              width: 1,
+                            ),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                          child: Text(
+                            song.qualityBadge!,
+                            style: textTheme.labelSmall?.copyWith(
+                              color: colorScheme.primary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${song.artist} - ${song.album}',
+                    [
+                      song.artist,
+                      if (song.album.isNotEmpty) song.album,
+                      song.sourceLabel,
+                    ].where((e) => e.trim().isNotEmpty).join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.labelSmall?.copyWith(

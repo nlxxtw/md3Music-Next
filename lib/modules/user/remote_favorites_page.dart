@@ -24,16 +24,7 @@ class _RemoteFavoritesPageState extends State<RemoteFavoritesPage> {
     super.dispose();
   }
 
-  String _sourceLabel(Song s) {
-    switch (s.source) {
-      case 'qq':
-        return 'QQ';
-      case 'soda':
-        return '汽水';
-      default:
-        return s.source ?? '发现';
-    }
-  }
+  String _sourceLabel(Song s) => s.sourceLabel;
 
   @override
   Widget build(BuildContext context) {

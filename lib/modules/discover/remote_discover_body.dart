@@ -4,10 +4,11 @@ import 'package:provider/provider.dart';
 import '../../providers/discover_source_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
 import '../../widgets/discovery_cover_image.dart';
+import '../sound/sounds_page.dart';
 import 'remote_playlist_page.dart';
 import 'remote_toplist_page.dart';
 
-/// 发现页 · QQ / 汽水远程内容（推荐歌单 + QQ 排行榜）。
+/// 发现页 · QQ / 汽水 / 网易云远程内容（排行榜 + 热门歌单 + 音效入口）。
 class RemoteDiscoverBody extends StatelessWidget {
   const RemoteDiscoverBody({super.key});
 
@@ -76,7 +77,11 @@ class RemoteDiscoverBody extends StatelessWidget {
             const SizedBox(height: 8),
           ],
           _SectionTitle(
-            title: ds.source == DiscoverMusicSource.soda ? '推荐歌单' : '热门歌单',
+            title: ds.source == DiscoverMusicSource.soda
+                ? '推荐歌单'
+                : ds.source == DiscoverMusicSource.netease
+                    ? '热门歌单'
+                    : '热门歌单',
           ),
           if (ds.playlists.isEmpty)
             Padding(
@@ -114,6 +119,17 @@ class RemoteDiscoverBody extends StatelessWidget {
                 },
               ),
             ),
+        const SizedBox(height: 8),
+        ListTile(
+          leading: const Icon(Icons.surround_sound_outlined),
+          title: const Text('音效'),
+          subtitle: const Text('卷积 / 蝰蛇音效，与音源无关'),
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SoundsPage()),
+            );
+          },
+        ),
         ],
       ),
     );

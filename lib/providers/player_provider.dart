@@ -251,27 +251,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 是否启用了睡眠定时。
   bool get isSleepTimerActive => _sleepTimerEndTime != null;
 
-  /// 当前歌曲的实际音质标签。
-  /// 本地歌曲优先使用 song.quality 推断的标签；
-  /// 在线歌曲优先显示实际播放音质（降级后可能与用户设置不同），
-  /// 若尚无实际音质则回退到用户设置的全局音质偏好。
+  /// 当前歌曲的实际音质标签（播放页徽章）。
+  /// QQ / 汽水 / 网易用短标签（SQ / HQ / 极高…），酷狗沿用原标签。
   String get currentQualityLabel {
     final song = _currentSong;
-    if (song != null && !song.isOnline && song.quality != null) {
-      switch (song.quality) {
-        case '128':
-          return '标准音质';
-        case '320':
-          return '高音质';
-        case 'flac':
-          return '无损音质';
-        case 'high':
-          return 'Hi-Res';
-        default:
-          return song.quality!;
-      }
+    final q = _actualPlayingQuality ?? song?.quality ?? _audioQuality.value;
+    if (song != null && song.isRemoteDiscovery) {
+      final tagged = song.copyWith(quality: q).qualityBadge;
+      if (tagged != null && tagged.isNotEmpty) return tagged;
     }
-    // 在线歌曲：优先显示实际播放音质（可能因降级而与设置不同）
+    if (song != null && !song.isOnline && song.quality != null) {
+      return song.copyWith(quality: song.quality).qualityBadge ??
+          song.quality!;
+    }
     if (_actualPlayingQuality != null) {
       return KugouQuality.labelOf(_actualPlayingQuality!);
     }
@@ -1145,7 +1137,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         }
         _actualPlayingQuality = newQuality;
         _prefetchedUrlQuality[song.id] = newQuality;
-        final resolvedSong = updatedSong.copyWith(url: newUrl);
+        final resolvedSong = updatedSong.copyWith(
+          url: newUrl,
+          quality: newQuality,
+        );
         _currentSong = resolvedSong;
         _playlist[_currentIndex] = resolvedSong;
 
@@ -1221,9 +1216,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         }
         _actualPlayingQuality = result.quality;
         _prefetchedUrlQuality[song.id] = result.quality;
-        final resolvedSong = updatedSong.copyWith(url: result.url);
+        final resolvedSong = updatedSong.copyWith(url: result.url, quality: result.quality);
         _currentSong = resolvedSong;
         _playlist[_currentIndex] = resolvedSong;
+        HistoryRepository().updateHistorySong(resolvedSong);
 
         await _setUrlAndPlay(result.url, seekTo: stallPos);
         // 续播后 position 从 stallPos 继续增长，速率检测自动重新采样
@@ -1448,7 +1444,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           return;
         }
         quality = result.quality;
-        song = song.copyWith(url: result.url);
+        song = song.copyWith(url: result.url, quality: result.quality);
       } else if (song.isOnline) {
         quality = _audioQuality.value;
       }
@@ -1698,9 +1694,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (result != null && result.url.isNotEmpty) {
         _actualPlayingQuality = result.quality;
         _warnQualityDowngrade(_audioQuality.value, result.quality);
-        final resolvedSong = song.copyWith(url: result.url);
+        final resolvedSong = song.copyWith(url: result.url, quality: result.quality);
         _currentSong = resolvedSong;
         _playlist = [resolvedSong];
+        HistoryRepository().updateHistorySong(resolvedSong);
         _isResolvingUrl = false;
         _savePlaylistIfChanged();
         notifyListeners();
@@ -1775,9 +1772,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         if (result != null && result.url.isNotEmpty) {
           _actualPlayingQuality = result.quality;
           _warnQualityDowngrade(_audioQuality.value, result.quality);
-          final resolvedSong = _currentSong!.copyWith(url: result.url);
+          final resolvedSong = _currentSong!.copyWith(url: result.url, quality: result.quality);
           _currentSong = resolvedSong;
           _playlist[_currentIndex] = resolvedSong;
+          HistoryRepository().updateHistorySong(resolvedSong);
           _isResolvingUrl = false;
           notifyListeners();
 
@@ -1870,10 +1868,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         } else if (isRemote) {
         final url = await _resolveRemoteDiscoveryUrl(_currentSong!);
         if (url != null && url.isNotEmpty) {
-          _actualPlayingQuality = _audioQuality.value;
-          final resolvedSong = _currentSong!.copyWith(url: url);
+          final qTag = _remoteQualityTag(_currentSong!);
+          _actualPlayingQuality = qTag;
+          final resolvedSong =
+              _currentSong!.copyWith(url: url, quality: qTag);
           _currentSong = resolvedSong;
           _playlist[_currentIndex] = resolvedSong;
+          HistoryRepository().updateHistorySong(resolvedSong);
           _isResolvingUrl = false;
           notifyListeners();
           if (_audioService != null) {
@@ -1906,9 +1907,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         if (result != null && result.url.isNotEmpty) {
           _actualPlayingQuality = result.quality;
           _warnQualityDowngrade(_audioQuality.value, result.quality);
-          final resolvedSong = _currentSong!.copyWith(url: result.url);
+          final resolvedSong = _currentSong!.copyWith(url: result.url, quality: result.quality);
           _currentSong = resolvedSong;
           _playlist[_currentIndex] = resolvedSong;
+          HistoryRepository().updateHistorySong(resolvedSong);
           _isResolvingUrl = false;
           notifyListeners();
 
@@ -1950,10 +1952,30 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       return await DiscoveryApiClient().resolvePlayUrl(
         source: source,
         id: song.remoteTrackId,
-        quality: _audioQuality.value,
+        quality: _remoteQualityTag(song),
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  /// 远程源写入/请求用的音质码（与 qqovo quality 对齐）。
+  String _remoteQualityTag(Song song) {
+    final q = _audioQuality;
+    switch (song.source) {
+      case 'soda':
+        if (q == AudioQuality.flac || q == AudioQuality.hires) return 'lossless';
+        if (q == AudioQuality.high) return 'exhigh';
+        return 'standard';
+      case 'netease':
+        if (q == AudioQuality.hires) return 'jymaster';
+        if (q == AudioQuality.flac) return 'lossless';
+        if (q == AudioQuality.high) return 'exhigh';
+        return 'standard';
+      case 'qq':
+        return q.value;
+      default:
+        return q.value;
     }
   }
 
@@ -1977,7 +1999,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           )
           .then((result) {
             if (result != null && result.url.isNotEmpty) {
-              _playlist[i] = song.copyWith(url: result.url);
+              _playlist[i] = song.copyWith(url: result.url, quality: result.quality);
               _prefetchedUrlQuality[song.id] = result.quality;
             }
           });
@@ -2324,11 +2346,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       // 已有 url 但它是按旧音质预取的（切换过音质）→ 同样要重新解析，
       // 否则会静默沿用旧音质的链接。
       // 远程发现（尤其汽水）CDN 签名很快过期：有缓存也强制重解。
+      final wantedRemoteQ =
+          song.isRemoteDiscovery ? _remoteQualityTag(song) : _audioQuality.value;
       final prefetchedQuality = _prefetchedUrlQuality[song.id];
       final cachedUrlStale =
           song.url != null &&
           prefetchedQuality != null &&
-          prefetchedQuality != _audioQuality.value;
+          prefetchedQuality != wantedRemoteQ;
       final remoteMustRefresh = song.isRemoteDiscovery;
       if (song.url == null || cachedUrlStale || remoteMustRefresh) {
         // URL 不存在，需要解析
@@ -2338,11 +2362,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           try {
             final url = await _resolveRemoteDiscoveryUrl(song);
             if (url != null && url.isNotEmpty) {
-              _actualPlayingQuality = _audioQuality.value;
-              _prefetchedUrlQuality[_currentSong!.id] = _audioQuality.value;
-              final resolvedSong = _currentSong!.copyWith(url: url);
+              final qTag = _remoteQualityTag(_currentSong!);
+              _actualPlayingQuality = qTag;
+              _prefetchedUrlQuality[_currentSong!.id] = qTag;
+              final resolvedSong =
+                  _currentSong!.copyWith(url: url, quality: qTag);
               _currentSong = resolvedSong;
               _playlist[_currentIndex] = resolvedSong;
+              HistoryRepository().updateHistorySong(resolvedSong);
             } else {
               _isResolvingUrl = false;
               return false;
@@ -2381,9 +2408,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
             _actualPlayingQuality = result.quality;
             _prefetchedUrlQuality[_currentSong!.id] = result.quality;
             _warnQualityDowngrade(_audioQuality.value, result.quality);
-            final resolvedSong = _currentSong!.copyWith(url: result.url);
+            final resolvedSong = _currentSong!.copyWith(url: result.url, quality: result.quality);
             _currentSong = resolvedSong;
             _playlist[_currentIndex] = resolvedSong;
+            HistoryRepository().updateHistorySong(resolvedSong);
             // 可选扩展：播放源开始后回调（默认关闭）
             PlayerProvider.onPlaybackSourceStarted
                 ?.call(_currentSong!, result.quality, result.url);
@@ -2843,7 +2871,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           );
           if (result != null && result.url.isNotEmpty) {
             _actualPlayingQuality = result.quality;
-            final resolvedSong = _currentSong!.copyWith(url: result.url);
+            final resolvedSong = _currentSong!.copyWith(url: result.url, quality: result.quality);
             _currentSong = resolvedSong;
             _playlist[_currentIndex] = resolvedSong;
           }
@@ -3189,6 +3217,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       if (song.isRemoteDiscovery) {
         playUrl = await _resolveRemoteDiscoveryUrl(song);
+        actualQuality = _remoteQualityTag(song);
       } else {
         final apiClient = KugouApiClient();
         final result = await apiClient.getSongUrlWithFallback(
@@ -3212,7 +3241,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       _actualPlayingQuality = actualQuality;
-      final resolvedSong = song.copyWith(url: playUrl);
+      final resolvedSong = song.copyWith(url: playUrl, quality: actualQuality);
       _currentSong = resolvedSong;
       if (_playlist.isNotEmpty && _currentIndex >= 0) {
         _playlist[_currentIndex] = resolvedSong;
@@ -3222,6 +3251,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           ..add(resolvedSong);
         _currentIndex = 0;
       }
+      HistoryRepository().updateHistorySong(resolvedSong);
       _isResolvingUrl = false;
       notifyListeners();
 
@@ -3412,7 +3442,16 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _recordHistory(Song song) {
-    HistoryRepository().addHistory(song);
+    var stamped = song;
+    if ((stamped.quality == null || stamped.quality!.isEmpty) &&
+        stamped.isOnline) {
+      stamped = stamped.copyWith(
+        quality: stamped.isRemoteDiscovery
+            ? _remoteQualityTag(stamped)
+            : _audioQuality.value,
+      );
+    }
+    HistoryRepository().addHistory(stamped);
   }
 
   just_audio.UriAudioSource _createAudioSource(Song song) {

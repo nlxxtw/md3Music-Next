@@ -129,6 +129,20 @@ class HistoryRepository {
     _scheduleFlush();
   }
 
+  /// 解析出真实音质后回写历史条目（不增加播放次数）。
+  Future<void> updateHistorySong(Song song) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_historyCache == null) {
+      await _loadHistory(prefs);
+    }
+    final history = _historyCache;
+    if (history == null) return;
+    final i = history.indexWhere((s) => s.id == song.id);
+    if (i < 0) return;
+    history[i] = song;
+    _scheduleFlush();
+  }
+
   void _applyHistoryInMemory(Song song) {
     final history = _historyCache!;
     history.removeWhere((s) => s.id == song.id);

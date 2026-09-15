@@ -38,7 +38,7 @@ class Song {
   final double? loudnessLufs;
   /// 音量均衡（响度归一）用：歌曲真峰值（dBTP/dBFS），可空。
   final double? loudnessPeakDb;
-  /// 音源：`null`/`kugou` 为原酷狗；`qq` / `soda` 为发现页远程源。
+  /// 音源：`null`/`kugou` 为原酷狗；`qq` / `soda` / `netease` 为发现页远程源。
   final String? source;
 
   const Song({
@@ -67,18 +67,66 @@ class Song {
     this.source,
   });
 
-  /// 是否为发现页 QQ / 汽水远程曲目（走 discovery API，不走酷狗登录/解析）。
+  /// 是否为发现页 QQ / 汽水 / 网易云远程曲目（走 discovery / qqovo，不走酷狗登录）。
   bool get isRemoteDiscovery {
     final s = source;
-    return s == 'qq' || s == 'soda';
+    return s == 'qq' || s == 'soda' || s == 'netease';
   }
 
-  /// 远程曲目用于向 discovery API 传参的原始 id（去掉 `qq:` / `soda:` 前缀）。
+  /// 远程曲目用于向 discovery API 传参的原始 id。
   String get remoteTrackId {
     final s = source;
     if (s == 'qq' && id.startsWith('qq:')) return id.substring(3);
     if (s == 'soda' && id.startsWith('soda:')) return id.substring(5);
+    if (s == 'netease' && id.startsWith('netease:')) return id.substring(8);
     return id;
+  }
+
+  /// UI 来源短标签（历史 / 列表副标题）。
+  String get sourceLabel {
+    switch (source) {
+      case 'qq':
+        return 'QQ';
+      case 'soda':
+        return '汽水';
+      case 'netease':
+        return '网易云';
+      case 'kugou':
+        return '酷狗';
+      default:
+        return isOnline ? '酷狗' : '本地';
+    }
+  }
+
+  /// 列表角标用短音质（对齐 qqovo / 网页习惯）。
+  String? get qualityBadge {
+    final q = (quality ?? '').trim().toLowerCase();
+    if (q.isEmpty) return null;
+    switch (source) {
+      case 'qq':
+        if (q == 'flac' || q == 'ogg' || q == 'sq') return 'SQ';
+        if (q == '320' || q == 'hq') return 'HQ';
+        if (q == '128' || q == 'standard') return '标准';
+        break;
+      case 'soda':
+        if (q.contains('lossless') || q == 'flac') return '无损';
+        if (q == 'exhigh' || q == '320' || q == 'higher') return '极高';
+        if (q == 'standard' || q == '128') return '标准';
+        break;
+      case 'netease':
+        if (q.contains('jymaster') || q.contains('sky')) return '臻音';
+        if (q.contains('hires') || q == 'high') return 'Hi-Res';
+        if (q == 'lossless' || q == 'flac') return '无损';
+        if (q == 'exhigh' || q == '320' || q == 'higher') return '极高';
+        if (q == 'standard' || q == '128') return '标准';
+        break;
+      default:
+        if (q == 'high' || q == 'hires' || q == 'hi-res') return 'Hi-Res';
+        if (q == 'flac') return '无损';
+        if (q == '320') return 'HQ';
+        if (q == '128') return '标准';
+    }
+    return quality;
   }
 
   String get displayDuration {

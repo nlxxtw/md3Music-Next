@@ -1,11 +1,11 @@
 {
-  "latestVersion": "13.3.9",
-  "latestBuild": 3004,
+  "latestVersion": "13.3.10",
+  "latestBuild": 3005,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": false,
-  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.9",
-  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.9/app-arm64-v8a-release.apk",
+  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.10",
+  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.10/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "MD3Music v13.3.9 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
+  "message": "MD3Music v13.3.10：汽水 AES 解密出声；网易云发现页；可选音质下载；历史标注来源。"
 }

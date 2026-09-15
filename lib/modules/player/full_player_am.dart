@@ -39,6 +39,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/comment_display_provider.dart';
 import '../../services/kugou_api/kugou_api_client.dart';
 import '../../services/kugou_api/kugou_models.dart';
+import '../../services/discovery_api/song_download_service.dart';
 import '../../widgets/apple_lyrics/apple_lyrics_view.dart';
 import '../../widgets/apple_lyrics/layout/lyric_preferences.dart';
 import '../../widgets/apple_lyrics/layout/lyric_preferences_panel.dart';
@@ -1912,6 +1913,17 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
               onPressed: _collapseByButton,
             ),
             const Spacer(),
+            if (playerProvider.currentSong?.isOnline == true)
+              IconButton(
+                icon: const Icon(Icons.download_outlined, color: Colors.white),
+                tooltip: '下载歌曲',
+                onPressed: () {
+                  final s = playerProvider.currentSong;
+                  if (s != null) {
+                    SongDownloadService.pickAndDownload(context, s);
+                  }
+                },
+              ),
             // AM v2: 顶部栏右侧 FLAC 质量徽章，点击复用 _showQualityDialog，
             // 长按呼出 _showVolumeDialog（与 MD 风格统一）
             _buildQualityPill(playerProvider),
@@ -2090,22 +2102,58 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
     final textAlign = alignment == CrossAxisAlignment.center
         ? TextAlign.center
         : TextAlign.left;
-    final subtitle = currentSong.album.toString().isEmpty
-        ? currentSong.artist.toString()
-        : '${currentSong.artist} · ${currentSong.album}';
+    final song = currentSong as Song;
+    final bits = <String>[
+      song.artist,
+      if (song.album.isNotEmpty) song.album,
+      song.sourceLabel,
+    ];
+    final subtitle = bits.where((e) => e.trim().isNotEmpty).join(' · ');
+    final qLabel = playerProvider.currentQualityLabel;
     return Column(
       crossAxisAlignment: alignment,
       children: [
         InkWell(
-          onTap: () => _navigateToAlbum(currentSong as Song),
+          onTap: () => _navigateToAlbum(song),
           borderRadius: BorderRadius.circular(4),
-          child: Text(
-            currentSong.displayName,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: (isExpanded ? textTheme.titleMedium : textTheme.titleLarge)
-                ?.copyWith(color: Colors.white, fontWeight: FontWeight.w600),
-            textAlign: textAlign,
+          child: Row(
+            mainAxisAlignment: alignment == CrossAxisAlignment.center
+                ? MainAxisAlignment.center
+                : MainAxisAlignment.start,
+            children: [
+              Flexible(
+                child: Text(
+                  song.displayName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      (isExpanded ? textTheme.titleMedium : textTheme.titleLarge)
+                          ?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                  textAlign: textAlign,
+                ),
+              ),
+              if (qLabel.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.white70),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(
+                    qLabel,
+                    style: textTheme.labelSmall?.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 2),
@@ -2742,21 +2790,55 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
     );
   }
 
-  /// 音质简短文本：去掉码率/格式后缀，与设置页默认音质按钮一致。
-  String _qualityShortLabel(AudioQuality quality) {
-    switch (quality) {
-      case AudioQuality.standard:
-        return '标准';
-      case AudioQuality.high:
-        return '高品质';
-      case AudioQuality.flac:
-        return '无损';
-      case AudioQuality.hires:
-        return 'Hi-Res';
+  /// 音质简短文本：去掉码率/格式后缀；远程源用平台习惯称呼。
+  String _qualityShortLabel(AudioQuality quality, {Song? song}) {
+    switch (song?.source) {
+      case 'netease':
+        switch (quality) {
+          case AudioQuality.standard:
+            return '标准';
+          case AudioQuality.high:
+            return '极高';
+          case AudioQuality.flac:
+            return '无损';
+          case AudioQuality.hires:
+            return '高清臻音';
+        }
+      case 'qq':
+        switch (quality) {
+          case AudioQuality.standard:
+            return '标准品质';
+          case AudioQuality.high:
+            return 'HQ高品质';
+          case AudioQuality.flac:
+          case AudioQuality.hires:
+            return 'SQ无损品质';
+        }
+      case 'soda':
+        switch (quality) {
+          case AudioQuality.standard:
+            return '标准';
+          case AudioQuality.high:
+          case AudioQuality.flac:
+          case AudioQuality.hires:
+            return '极高';
+        }
+      default:
+        switch (quality) {
+          case AudioQuality.standard:
+            return '标准';
+          case AudioQuality.high:
+            return '高品质';
+          case AudioQuality.flac:
+            return '无损';
+          case AudioQuality.hires:
+            return 'Hi-Res';
+        }
     }
   }
 
   void _showQualityDialog(PlayerProvider playerProvider) {
+    final song = playerProvider.currentSong;
     showDialog(
       context: context,
       builder: (context) {
@@ -2769,7 +2851,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                 Navigator.pop(context);
               },
               child: Text(
-                _qualityShortLabel(quality),
+                _qualityShortLabel(quality, song: song),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: playerProvider.audioQuality == quality
@@ -2854,6 +2936,16 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                     _showAddToPlaylistDialog(rootContext, song);
                   },
                 ),
+                if (song.isOnline)
+                  ListTile(
+                    leading: const Icon(Icons.download_outlined),
+                    title: const Text('下载歌曲'),
+                    subtitle: const Text('可选择音质'),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      SongDownloadService.pickAndDownload(rootContext, song);
+                    },
+                  ),
                 // 歌曲信息：频率/位深/码率/声道 + USB 独占开关（原顶栏按钮收纳到菜单）
                 ListTile(
                   leading: const Icon(Icons.info_outline),

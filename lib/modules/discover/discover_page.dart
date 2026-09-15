@@ -313,7 +313,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
-  /// 发现页左上角：酷狗 / QQ / 汽水。
+  /// 发现页左上角：酷狗 / QQ / 汽水 / 网易。
   Widget _buildSourceSwitcher(DiscoverSourceProvider ds) {
     return PopupMenuButton<DiscoverMusicSource>(
       tooltip: '切换音源',
