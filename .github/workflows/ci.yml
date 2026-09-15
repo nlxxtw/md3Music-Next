@@ -34,12 +34,14 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK & NDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          # 旧默认会装已下架的 `tools` 包，sdkmanager 直接失败
+          packages: platform-tools
 
       - name: Install Android SDK packages
         run: |
           sdkmanager --install \
-            "cmdline-tools;latest" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
             "ndk;28.2.13676358" \
