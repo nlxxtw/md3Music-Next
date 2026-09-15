@@ -7,6 +7,7 @@ import '../../providers/player_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
 import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/song_list_item.dart';
+import 'remote_fm_section.dart';
 import 'remote_playlist_page.dart';
 import 'remote_toplist_page.dart';
 
@@ -14,52 +15,16 @@ import 'remote_toplist_page.dart';
 class RemoteDiscoverBody extends StatelessWidget {
   const RemoteDiscoverBody({super.key});
 
-  Future<void> _pickFmMode(BuildContext context, DiscoverSourceProvider ds) async {
-    final options = ds.fmModeOptions;
-    if (options.length <= 1) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        final current = ds.fmMode;
-        return SafeArea(
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                child: Text(
-                  '私人漫游模式',
-                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ),
-              for (final o in options)
-                ListTile(
-                  title: Text(o.label),
-                  subtitle: o.description.isEmpty ? null : Text(o.description),
-                  trailing: o.value == current
-                      ? Text(
-                          '当前',
-                          style: TextStyle(
-                            color: Theme.of(ctx).colorScheme.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        )
-                      : null,
-                  selected: o.value == current,
-                  onTap: () => Navigator.pop(ctx, o.value),
-                ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
+  void _openFmAll(BuildContext context, DiscoverSourceProvider ds) {
+    if (ds.fmSongs.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _RemoteFmDetailPage(
+          title: '${ds.source.label} · ${ds.fmModeLabel}',
+          songs: List<Song>.from(ds.fmSongs),
+        ),
+      ),
     );
-    if (selected != null && context.mounted) {
-      await ds.setFmMode(selected);
-    }
   }
 
   @override
@@ -103,85 +68,9 @@ class RemoteDiscoverBody extends StatelessWidget {
         children: [
           if (ds.loading && hasContent)
             const LinearProgressIndicator(minHeight: 2),
-          _SectionTitle(
-            title: '私人漫游',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (ds.fmModeOptions.length > 1)
-                  TextButton(
-                    onPressed: () => _pickFmMode(context, ds),
-                    child: Text(ds.fmModeLabel),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      ds.fmModeLabel,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                    ),
-                  ),
-                if (ds.fmSongs.isNotEmpty)
-                  IconButton(
-                    tooltip: '全部',
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => _RemoteFmDetailPage(
-                            title: '${ds.source.label} · ${ds.fmModeLabel}',
-                            songs: ds.fmSongs,
-                            autoRoaming: ds.autoRoaming,
-                          ),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.chevron_right),
-                  ),
-              ],
-            ),
+          RemoteFmSection(
+            onOpenAll: () => _openFmAll(context, ds),
           ),
-          SwitchListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-            title: const Text('自动漫游'),
-            subtitle: const Text('队列播完时按当前模式继续推荐下一首'),
-            value: ds.autoRoaming,
-            onChanged: (v) => ds.setAutoRoaming(v),
-          ),
-          if (ds.fmLoading && ds.fmSongs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 24),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (ds.fmSongs.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                '暂无漫游推荐',
-                style: TextStyle(color: cs.onSurfaceVariant),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Column(
-                children: [
-                  if (ds.fmLoading) const LinearProgressIndicator(minHeight: 2),
-                  for (var i = 0; i < ds.fmSongs.length && i < 3; i++)
-                    SongListItem(
-                      song: ds.fmSongs[i],
-                      showDuration: false,
-                      onTap: () => ds.playFmSongs(
-                        context.read<PlayerProvider>(),
-                        ds.fmSongs,
-                        i,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 8),
           if (ds.toplists.isNotEmpty) ...[
             const _SectionTitle(title: '排行榜'),
             SizedBox(
@@ -257,12 +146,10 @@ class RemoteDiscoverBody extends StatelessWidget {
 class _RemoteFmDetailPage extends StatelessWidget {
   final String title;
   final List<Song> songs;
-  final bool autoRoaming;
 
   const _RemoteFmDetailPage({
     required this.title,
     required this.songs,
-    this.autoRoaming = true,
   });
 
   @override

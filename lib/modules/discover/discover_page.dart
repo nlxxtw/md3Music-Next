@@ -247,7 +247,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
 
     return Scaffold(
       appBar: ScrollAwareAppBar(
-        title: '发现',
+        // 不放「发现」：左上已有音源名，中间留给问候胶囊，避免挤没。
+        title: '',
         tabId: 'discover',
         scrollController: isKugou ? _scrollController : null,
         // 公开版偏好：无壁纸时顶部恒为不透明 surface（文字区稳定）；
@@ -255,7 +256,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         opaque: true,
         leading: _buildSourceSwitcher(discoverSource),
         leadingWidth: 88,
-        titleTrailing: isKugou ? _buildGreetingPill(colorScheme) : null,
+        titleTrailing: _buildGreetingPill(colorScheme),
         actions: [
           _buildActionIcon(
             icon: Icons.search,
@@ -414,8 +415,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     );
   }
 
-  /// 问候胶囊，紧跟在顶栏标题右边。宽度贴着文字长短变，上限由标题区剩下的宽度
-  /// 决定（见 [ScrollAwareAppBar.titleTrailing]），顶格时由 ellipsis 收尾。
+  /// 问候胶囊占满顶栏中间区（已去掉「发现」标题，避免挤没问候）。
   Widget _buildGreetingPill(ColorScheme cs) {
     final tt = Theme.of(context).textTheme;
     return Container(

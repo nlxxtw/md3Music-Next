@@ -622,9 +622,19 @@ class _PersonalFmSectionState extends State<PersonalFmSection> {
             : _buildCover(cs, currentTrack, cacheSize: 336, iconSize: 36),
       ),
     );
-    if (currentTrack == null) return cover;
+    final badged = Stack(
+      children: [
+        cover,
+        Positioned(
+          left: 6,
+          bottom: 6,
+          child: _PlatformBadge(label: '酷狗'),
+        ),
+      ],
+    );
+    if (currentTrack == null) return badged;
     return _buildTappableCover(
-      cover: cover,
+      cover: badged,
       radius: _kCoverRadius,
       semanticLabel: '正在播放 ${currentTrack.songName}',
       tooltip: '打开播放详情',
@@ -801,6 +811,34 @@ class _PersonalFmSectionState extends State<PersonalFmSection> {
           Icons.music_note,
           size: iconSize,
           color: cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+/// 封面左下角平台角标，不挤占右侧歌名/播放行高度。
+class _PlatformBadge extends StatelessWidget {
+  const _PlatformBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        shape: const StadiumBorder(),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                height: 1.1,
+              ),
         ),
       ),
     );

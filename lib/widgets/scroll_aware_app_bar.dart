@@ -151,11 +151,16 @@ class _ScrollAwareAppBarState extends State<ScrollAwareAppBar> {
   }
 
   Widget _buildTitle(TextTheme textTheme) {
+    final trailing = widget.titleTrailing;
+    final hasTitle = widget.title.trim().isNotEmpty;
+    // 发现页等场景可把标题留空，只保留问候胶囊占满中间区。
+    if (!hasTitle) {
+      return trailing ?? const SizedBox.shrink();
+    }
     final titleText = Text(
       widget.title,
       style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
     );
-    final trailing = widget.titleTrailing;
     if (trailing == null) return titleText;
     return Row(
       children: [
