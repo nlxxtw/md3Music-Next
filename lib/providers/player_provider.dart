@@ -1965,15 +1965,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     ) {
       final song = _playlist[i];
       if (!song.isOnline || song.url != null) continue;
-      if (song.isRemoteDiscovery) {
-        _resolveRemoteDiscoveryUrl(song).then((url) {
-          if (url != null && url.isNotEmpty) {
-            _playlist[i] = song.copyWith(url: url);
-            _prefetchedUrlQuality[song.id] = _audioQuality.value;
-          }
-        });
-        continue;
-      }
+      // 汽水/QQ 直链时效短（尤其汽水 douyinvod），预取后再播常变成无声或乱跳下一首
+      if (song.isRemoteDiscovery) continue;
       KugouApiClient()
           .getSongUrlWithFallback(
             song.id,
@@ -2144,18 +2137,25 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // 诊断日志：setUrl
     // ignore: avoid_print
     print('[D切歌] setUrl → ${url.substring(0, url.length < 60 ? url.length : 60)}');
+    // 远程切歌先收掉交叉淡化，避免备用播放器 volume=0 残留到新歌
+    if (_currentSong?.isRemoteDiscovery == true) {
+      _audioService.abortCrossfade();
+      _resetCrossfadePrepared();
+    }
     // 音量均衡：把当前歌曲的响度元数据带给播放器（无响度则旁路为 0 dB）。
+    // 远程发现无可靠响度，勿沿用上一首把声音压没。
     await _audioService.setUrl(
       url,
-      loudnessLufs: _currentSong?.loudnessLufs,
-      loudnessPeakDb: _currentSong?.loudnessPeakDb,
+      loudnessLufs:
+          _currentSong?.isRemoteDiscovery == true ? null : _currentSong?.loudnessLufs,
+      loudnessPeakDb:
+          _currentSong?.isRemoteDiscovery == true ? null : _currentSong?.loudnessPeakDb,
     );
-    // 直链加载后若音量被置 0（交叉淡化/焦点残留），拉回可听音量
+    // 直链加载后强制拉回用户音量（交叉淡化曾把播放器置 0）
     if (_currentSong?.isRemoteDiscovery == true) {
-      final v = _audioService.player.volume;
-      if (v < 0.05) {
-        await _audioService.setVolume(1.0);
-      }
+      try {
+        await _audioService.setVolume(_volume <= 0 ? 1.0 : _volume, force: true);
+      } catch (_) {}
     }
     final deadline = DateTime.now().add(const Duration(seconds: 10));
     while (DateTime.now().isBefore(deadline)) {
@@ -2322,12 +2322,14 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       // 缓存未命中：需要 URL 来播放
       // 已有 url 但它是按旧音质预取的（切换过音质）→ 同样要重新解析，
       // 否则会静默沿用旧音质的链接。
+      // 远程发现（尤其汽水）CDN 签名很快过期：有缓存也强制重解。
       final prefetchedQuality = _prefetchedUrlQuality[song.id];
       final cachedUrlStale =
           song.url != null &&
           prefetchedQuality != null &&
           prefetchedQuality != _audioQuality.value;
-      if (song.url == null || cachedUrlStale) {
+      final remoteMustRefresh = song.isRemoteDiscovery;
+      if (song.url == null || cachedUrlStale || remoteMustRefresh) {
         // URL 不存在，需要解析
         if (song.isRemoteDiscovery) {
           _isResolvingUrl = true;

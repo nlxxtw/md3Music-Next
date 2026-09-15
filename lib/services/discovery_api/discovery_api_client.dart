@@ -106,11 +106,30 @@ class DiscoveryApiClient {
     );
   }
 
-  /// 解析可播 URL（服务端需提供 `/api/v1/resolve`；失败时 qqovo 兜底）。
+  /// 解析可播 URL。
+  /// QQ/汽水优先走国内 qqovo（music.qqovo.cn），避免云端仍打海外 .top 导致切歌卡数秒；
+  /// 客户端失败再回落云端 `/api/v1/resolve`。
   Future<String?> resolvePlayUrl({
     required String source,
     required String id,
   }) async {
+    if (source == 'qq') {
+      final local = await QqovoResolver().resolve(
+        server: 'tencent',
+        id: id,
+        qualities: const ['320', '128'],
+      );
+      if (local != null) return local;
+    } else if (source == 'soda') {
+      // standard 更小、起播更快；exhigh 其次
+      final local = await QqovoResolver().resolve(
+        server: 'qishui',
+        id: id,
+        qualities: const ['standard', 'exhigh', '128', '320'],
+      );
+      if (local != null) return local;
+    }
+
     try {
       final res = await _dio.get(
         '$baseUrl/api/v1/resolve',
@@ -136,18 +155,6 @@ class DiscoveryApiClient {
       }
     } catch (e) {
       debugPrint('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
-    }
-
-    // 云端失败：客户端直连 qqovo（VIP QQ / 汽水整曲）
-    if (source == 'qq') {
-      return QqovoResolver().resolve(server: 'tencent', id: id);
-    }
-    if (source == 'soda') {
-      return QqovoResolver().resolve(
-        server: 'qishui',
-        id: id,
-        qualities: const ['exhigh', 'higher', 'standard'],
-      );
     }
     return null;
   }
