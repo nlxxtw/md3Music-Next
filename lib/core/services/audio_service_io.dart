@@ -622,6 +622,7 @@ class AudioService {
     String url, {
     double? loudnessLufs,
     double? loudnessPeakDb,
+    Map<String, String>? headers,
   }) async {
     abortCrossfade();
     // 音量均衡响度：歌曲未带响度时，回退查「url → 响度」缓存（KugouPlayUrl 解析时记录）
@@ -632,7 +633,14 @@ class AudioService {
     }
     _vnLufs = loudnessLufs;
     _vnPeakDb = loudnessPeakDb;
-    await _activePlayer.setUrl(url, headers: const {});
+    // 不要传空 Map：ExoPlayer 会把它当成「覆盖默认头」，导致无 User-Agent，
+    // QQ / 汽水 CDN 常因此拒播。null = 保留播放器默认请求头。
+    final effectiveHeaders = headers ?? _discoveryStreamHeaders(url);
+    if (effectiveHeaders == null) {
+      await _activePlayer.setUrl(url);
+    } else {
+      await _activePlayer.setUrl(url, headers: effectiveHeaders);
+    }
     await _applyNormalizationGainActive();
   }
 
@@ -805,6 +813,7 @@ class AudioService {
       final loaded = await standby.setAudioSource(
         AudioSource.uri(
           Uri.parse(url),
+          headers: _discoveryStreamHeaders(url),
           tag: {
             'id': id,
             'title': title ?? '',
@@ -1019,9 +1028,11 @@ UriAudioSource createAudioSource({
   String? artist,
   String? album,
   Uri? artUri,
+  Map<String, String>? headers,
 }) {
   return AudioSource.uri(
     Uri.parse(url),
+    headers: headers ?? _discoveryStreamHeaders(url),
     tag: {
       'id': id,
       'title': title,
@@ -1030,4 +1041,27 @@ UriAudioSource createAudioSource({
       'artUri': artUri?.toString(),
     },
   );
+}
+
+/// QQ / 汽水直链播放头（按 CDN 域名推断）。
+Map<String, String>? _discoveryStreamHeaders(String url) {
+  final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+  if (host.isEmpty) return null;
+  const ua =
+      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/120.0.0.0 Mobile Safari/537.36';
+  if (host.contains('qqmusic') ||
+      host.contains('tencentmusic') ||
+      host.endsWith('.qq.com') ||
+      host.contains('gtimg')) {
+    return {'User-Agent': ua, 'Referer': 'https://y.qq.com/'};
+  }
+  if (host.contains('douyinvod') ||
+      host.contains('douyinpic') ||
+      host.contains('bytevod') ||
+      host.contains('qishui') ||
+      host.contains('luna')) {
+    return {'User-Agent': ua, 'Referer': 'https://www.qishui.com/'};
+  }
+  return null;
 }

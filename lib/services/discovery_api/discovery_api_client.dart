@@ -110,17 +110,32 @@ class DiscoveryApiClient {
     required String id,
   }) async {
     try {
-      final res = await _dio.get('$baseUrl/api/v1/resolve', queryParameters: {
-        'source': source,
-        'id': id,
-      });
-      var url = res.data['url']?.toString();
+      final res = await _dio.get(
+        '$baseUrl/api/v1/resolve',
+        queryParameters: {
+          'source': source,
+          'id': id,
+        },
+        // 502 时服务端仍可能带 error 字段，不要直接抛掉
+        options: Options(
+          validateStatus: (code) => code != null && code < 600,
+        ),
+      );
+      final data = res.data;
+      if (data is! Map) return null;
+      var url = data['url']?.toString();
       // Android 禁明文；QQ CDN https 可用，强制升格。
       if (url != null && url.startsWith('http://')) {
         url = 'https://${url.substring(7)}';
       }
       if (url != null && url.startsWith('http')) return url;
-    } catch (_) {}
+      // ignore: avoid_print
+      print('[DiscoveryApi] resolve empty source=$source id=$id '
+          'status=${res.statusCode} error=${data['error']}');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
+    }
     return null;
   }
 }
