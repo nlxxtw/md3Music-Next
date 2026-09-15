@@ -5,6 +5,8 @@
          设置页已按 Android 版本（API 26+）禁用开关，低版本不会触发运行调用。 -->
     <uses-sdk tools:overrideLibrary="com.hchen.superlyricapi" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 应用内更新：安装下载的 APK -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- 播放期间持有 WifiLock（息屏后台网络挂起保护）：API 29+ 需 ACCESS_WIFI_STATE，更早版本需 CHANGE_WIFI_STATE（均为 normal 权限） -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

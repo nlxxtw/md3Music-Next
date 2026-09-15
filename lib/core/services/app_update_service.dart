@@ -1,17 +1,37 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// 远程版本配置（仓库根目录 [update.json]，经 raw.githubusercontent 拉取）。
+/// GitHub 国内加速（用户提供的 fuck123 节点）。
 ///
-/// 操作方式：改 `update.json` 后推到 `main` 即可生效，无需发新包改弹框逻辑。
-/// - [force] true：强制更新，不可关闭，只能点「立即更新」跳转 [url]
-/// - [minBuild]/[minVersion]：低于此版本一律强制
-/// - [url]：跳转目标（Release 页 / 网盘 / 任意 https 链接）
+/// 用法：`GithubAccel.wrap('https://github.com/...')`
+/// → `https://github.fuck123.de5.net/https://github.com/...`
+class GithubAccel {
+  static const host = 'https://github.fuck123.de5.net';
+
+  /// 把任意 GitHub / raw.githubusercontent 链接包一层加速。
+  static String wrap(String url) {
+    final u = url.trim();
+    if (u.isEmpty) return u;
+    if (u.contains('fuck123.de5.net')) return u;
+    final normalized = u.startsWith('http') ? u : 'https://$u';
+    return '$host/$normalized';
+  }
+
+  static bool isGithubAsset(String url) {
+    final u = url.toLowerCase();
+    return u.contains('github.com') || u.contains('githubusercontent.com');
+  }
+}
+
+/// 远程版本配置（仓库根目录 [update.json]）。
 class AppUpdateInfo {
   final String latestVersion;
   final int latestBuild;
@@ -19,6 +39,7 @@ class AppUpdateInfo {
   final int minBuild;
   final bool force;
   final String url;
+  final String? apkUrl;
   final String title;
   final String message;
 
@@ -29,22 +50,36 @@ class AppUpdateInfo {
     required this.minBuild,
     required this.force,
     required this.url,
+    this.apkUrl,
     required this.title,
     required this.message,
   });
 
   factory AppUpdateInfo.fromJson(Map<String, dynamic> json) {
+    final version = json['latestVersion']?.toString() ?? '0.0.0';
+    final releaseUrl = json['url']?.toString() ??
+        'https://github.com/nlxxtw/md3Music-Next/releases/latest';
+    final apk = json['apkUrl']?.toString();
     return AppUpdateInfo(
-      latestVersion: json['latestVersion']?.toString() ?? '0.0.0',
+      latestVersion: version,
       latestBuild: (json['latestBuild'] as num?)?.toInt() ?? 0,
       minVersion: json['minVersion']?.toString() ?? '0.0.0',
       minBuild: (json['minBuild'] as num?)?.toInt() ?? 0,
       force: json['force'] == true,
-      url: json['url']?.toString() ??
-          'https://github.com/nlxxtw/md3Music-Next/releases/latest',
+      url: releaseUrl,
+      apkUrl: (apk != null && apk.isNotEmpty)
+          ? apk
+          : 'https://github.com/nlxxtw/md3Music-Next/releases/download/v$version/app-arm64-v8a-release.apk',
       title: json['title']?.toString() ?? '发现新版本',
       message: json['message']?.toString() ?? '有新版本可用，请更新后继续使用。',
     );
+  }
+
+  /// 经国内加速的 APK 直链（在线安装用）。
+  String get acceleratedApkUrl {
+    final raw = apkUrl ??
+        'https://github.com/nlxxtw/md3Music-Next/releases/download/v$latestVersion/app-arm64-v8a-release.apk';
+    return GithubAccel.wrap(raw);
   }
 }
 
@@ -69,16 +104,28 @@ class AppUpdateService {
   AppUpdateService._();
   static final AppUpdateService instance = AppUpdateService._();
 
-  /// 改这个地址即可换配置源（须为可公网访问的 JSON）。
-  static const configUrl =
-      'https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json';
+  static const _installChannel = MethodChannel('com.md3music.md3music/apk_install');
 
-  static const _fallbackUrl =
+  static const _browserHeaders = {
+    'User-Agent':
+        'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Mobile Safari/537.36',
+    'Accept': '*/*',
+  };
+
+  /// 主源 + 国内加速镜像（fuck123 优先）。
+  static const configUrls = <String>[
+    'https://github.fuck123.de5.net/https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
+    'https://cdn.jsdelivr.net/gh/nlxxtw/md3Music-Next@main/update.json',
+    'https://ghproxy.net/https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
+    'https://raw.githubusercontent.com/nlxxtw/md3Music-Next/main/update.json',
+  ];
+
+  static const fallbackReleaseUrl =
       'https://github.com/nlxxtw/md3Music-Next/releases/latest';
 
   bool _checking = false;
 
-  /// 启动后调用一次：拉取配置 → 比较版本 → 弹框。
   Future<void> checkAndPrompt(BuildContext context) async {
     if (kIsWeb || _checking) return;
     _checking = true;
@@ -94,16 +141,30 @@ class AppUpdateService {
     }
   }
 
-  /// 打开配置里的跳转地址（设置页「更新最新版本」也可调）。
-  /// 返回是否成功唤起外部浏览器。
-  Future<bool> openUpdateUrl({String? overrideUrl}) async {
-    final url = overrideUrl ??
-        (await _fetchInfo())?.url ??
-        _fallbackUrl;
+  /// 打开下载页 / 加速直链。
+  /// [skipRemoteLookup]：网络已失败时不要再等 update.json。
+  Future<bool> openUpdateUrl({
+    String? overrideUrl,
+    bool skipRemoteLookup = false,
+    bool preferAccelApk = true,
+  }) async {
+    String url = overrideUrl ?? fallbackReleaseUrl;
+    if (overrideUrl == null && !skipRemoteLookup) {
+      final info = await _fetchInfo();
+      if (info != null) {
+        url = preferAccelApk ? info.acceleratedApkUrl : info.url;
+      } else {
+        url = GithubAccel.wrap(fallbackReleaseUrl);
+      }
+    } else if (overrideUrl != null &&
+        preferAccelApk &&
+        GithubAccel.isGithubAsset(overrideUrl) &&
+        !overrideUrl.contains('fuck123.de5.net')) {
+      url = GithubAccel.wrap(overrideUrl);
+    }
     return launchExternalUrl(url);
   }
 
-  /// 直接尝试打开链接。Android 11+ 上 [canLaunchUrl] 常误报 false，故不作为前置条件。
   static Future<bool> launchExternalUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
@@ -155,20 +216,169 @@ class AppUpdateService {
   }
 
   Future<AppUpdateInfo?> _fetchInfo() async {
-    final uri = Uri.parse(configUrl).replace(
-      queryParameters: {'t': '${DateTime.now().millisecondsSinceEpoch}'},
-    );
-    final resp = await http.get(uri).timeout(const Duration(seconds: 8));
-    if (resp.statusCode != 200) return null;
-    final decoded = jsonDecode(resp.body);
-    if (decoded is! Map) return null;
-    return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
+    final stamp = '${DateTime.now().millisecondsSinceEpoch}';
+    final futures = configUrls.map((base) async {
+      final uri = Uri.parse(base).replace(queryParameters: {'t': stamp});
+      final resp = await http
+          .get(uri, headers: _browserHeaders)
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) {
+        throw StateError('HTTP ${resp.statusCode} $base');
+      }
+      final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+      if (decoded is! Map) throw StateError('bad json $base');
+      return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
+    }).toList();
+
+    try {
+      return await Future.any(futures);
+    } catch (_) {
+      for (final base in configUrls) {
+        try {
+          final uri = Uri.parse(base).replace(queryParameters: {'t': stamp});
+          final resp = await http
+              .get(uri, headers: _browserHeaders)
+              .timeout(const Duration(seconds: 10));
+          if (resp.statusCode != 200) continue;
+          final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
+          if (decoded is! Map) continue;
+          return AppUpdateInfo.fromJson(Map<String, dynamic>.from(decoded));
+        } catch (e) {
+          debugPrint('AppUpdateService fetch miss $base: $e');
+        }
+      }
+    }
+    return null;
   }
 
-  /// 当前是否低于目标：先比 semver，同版本再比 versionCode。
-  ///
-  /// 不能只比 build：本机旁路包可能带很大的 versionCode（如 2135），
-  /// 而 Actions 正式包从较小序号递增（如 135），否则会误判「已是最新」。
+  /// 经加速节点下载 APK 并调起系统安装器。
+  Future<void> downloadAndInstall(
+    BuildContext context,
+    AppUpdateInfo info,
+  ) async {
+    if (kIsWeb) {
+      await openUpdateUrl(overrideUrl: info.acceleratedApkUrl);
+      return;
+    }
+
+    final apkUrl = info.acceleratedApkUrl;
+    final progress = ValueNotifier<double?>(0);
+    var cancelled = false;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('正在下载更新'),
+            content: ValueListenableBuilder<double?>(
+              valueListenable: progress,
+              builder: (_, p, __) {
+                final pct = p == null ? null : (p * 100).clamp(0, 100);
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      pct == null
+                          ? '连接加速节点…'
+                          : '已下载 ${pct.toStringAsFixed(0)}%',
+                    ),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(value: p),
+                    const SizedBox(height: 8),
+                    Text(
+                      '经 github.fuck123.de5.net 加速\n${info.latestVersion}',
+                      style: Theme.of(ctx).textTheme.bodySmall,
+                    ),
+                  ],
+                );
+              },
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  cancelled = true;
+                  Navigator.of(ctx).pop();
+                },
+                child: const Text('取消'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/md3music-update.apk');
+      if (await file.exists()) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+
+      final client = http.Client();
+      try {
+        final req = http.Request('GET', Uri.parse(apkUrl));
+        req.headers.addAll(_browserHeaders);
+        req.headers['Referer'] = '${GithubAccel.host}/';
+        final streamed = await client.send(req).timeout(
+              const Duration(seconds: 30),
+            );
+        if (streamed.statusCode != 200) {
+          throw StateError('下载失败 HTTP ${streamed.statusCode}');
+        }
+        final total = streamed.contentLength ?? 0;
+        final sink = file.openWrite();
+        var received = 0;
+        await for (final chunk in streamed.stream) {
+          if (cancelled) {
+            await sink.close();
+            try {
+              await file.delete();
+            } catch (_) {}
+            return;
+          }
+          sink.add(chunk);
+          received += chunk.length;
+          if (total > 0) {
+            progress.value = received / total;
+          } else {
+            progress.value = null;
+          }
+        }
+        await sink.close();
+      } finally {
+        client.close();
+      }
+
+      if (cancelled) return;
+      if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
+
+      final ok = await _installChannel.invokeMethod<bool>('installApk', {
+        'path': file.path,
+      });
+      if (ok != true && context.mounted) {
+        // 安装器唤起失败：退回浏览器打开加速直链
+        await openUpdateUrl(overrideUrl: apkUrl, preferAccelApk: false);
+      }
+    } catch (e, st) {
+      debugPrint('downloadAndInstall failed: $e\n$st');
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('下载失败：$e，改用浏览器打开…')),
+        );
+      }
+      await openUpdateUrl(overrideUrl: apkUrl, preferAccelApk: false);
+    } finally {
+      progress.dispose();
+    }
+  }
+
   static bool _isOlder(
     String curVer,
     int curBuild,
@@ -186,10 +396,7 @@ class AppUpdateService {
   static int _compareSemver(String a, String b) {
     List<int> parts(String v) {
       final core = v.split('+').first.split('-').first;
-      return core
-          .split('.')
-          .map((e) => int.tryParse(e) ?? 0)
-          .toList();
+      return core.split('.').map((e) => int.tryParse(e) ?? 0).toList();
     }
 
     final pa = parts(a);
@@ -220,7 +427,8 @@ class AppUpdateService {
             content: Text(
               '${info.message}\n\n'
               '当前：${decision.currentVersion} (${decision.currentBuild})\n'
-              '最新：${info.latestVersion} (${info.latestBuild})',
+              '最新：${info.latestVersion} (${info.latestBuild})\n\n'
+              '将经国内 GitHub 加速下载安装。',
             ),
             actions: [
               if (!force)
@@ -228,18 +436,23 @@ class AppUpdateService {
                   onPressed: () => Navigator.of(ctx).pop(),
                   child: const Text('稍后'),
                 ),
+              TextButton(
+                onPressed: () async {
+                  await AppUpdateService.instance.openUpdateUrl(
+                    overrideUrl: info.url,
+                    preferAccelApk: false,
+                  );
+                },
+                child: const Text('打开网页'),
+              ),
               FilledButton(
                 onPressed: () async {
-                  final ok = await launchExternalUrl(info.url);
-                  if (!ok) {
-                    debugPrint('showUpdateDialog: failed to open ${info.url}');
-                  }
-                  // 强制更新：跳转后仍留在弹框，避免继续使用旧版
-                  if (!force && ctx.mounted) {
-                    Navigator.of(ctx).pop();
-                  }
+                  Navigator.of(ctx).pop();
+                  if (!context.mounted) return;
+                  await AppUpdateService.instance
+                      .downloadAndInstall(context, info);
                 },
-                child: const Text('立即更新'),
+                child: const Text('在线安装'),
               ),
             ],
           ),
