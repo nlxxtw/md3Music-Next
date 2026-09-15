@@ -1879,12 +1879,20 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           await _setUrlAndPlay(fileUri);
         }
         } else if (isRemote) {
-        final url = await _resolveRemoteDiscoveryUrl(_currentSong!);
+        var current = _currentSong!;
+        // 起播前把 qqovo 代理/空封面换成 CDN，否则锁屏/原子/通知全无封面
+        current = await DiscoveryApiClient().ensureRemoteArtwork(current);
+        _currentSong = current;
+        _playlist[_currentIndex] = current;
+        _updateNotification();
+        notifyListeners();
+
+        final url = await _resolveRemoteDiscoveryUrl(current);
         if (url != null && url.isNotEmpty) {
-          final qTag = _remoteQualityTag(_currentSong!);
+          final qTag = _remoteQualityTag(current);
           _actualPlayingQuality = qTag;
           final resolvedSong =
-              _currentSong!.copyWith(url: url, quality: qTag);
+              current.copyWith(url: url, quality: qTag);
           _currentSong = resolvedSong;
           _playlist[_currentIndex] = resolvedSong;
           HistoryRepository().updateHistorySong(resolvedSong);
@@ -2395,7 +2403,16 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           _isResolvingUrl = true;
           notifyListeners();
           try {
-            final url = await _resolveRemoteDiscoveryUrl(song);
+            final withArt =
+                await DiscoveryApiClient().ensureRemoteArtwork(_currentSong!);
+            if (!identical(withArt, _currentSong) &&
+                withArt.artworkUri != _currentSong?.artworkUri) {
+              _currentSong = withArt;
+              _playlist[_currentIndex] = withArt;
+              _updateNotification();
+              notifyListeners();
+            }
+            final url = await _resolveRemoteDiscoveryUrl(_currentSong!);
             if (url != null && url.isNotEmpty) {
               final qTag = _remoteQualityTag(_currentSong!);
               _actualPlayingQuality = qTag;

@@ -1,11 +1,11 @@
 {
-  "latestVersion": "13.3.21",
-  "latestBuild": 3023,
+  "latestVersion": "13.3.22",
+  "latestBuild": 3024,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": true,
-  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.21",
-  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.21/app-arm64-v8a-release.apk",
+  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.22",
+  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.22/app-arm64-v8a-release.apk",
   "title": "发现新版本",
-  "message": "MD3Music v13.3.21 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
+  "message": "修复网易封面：解析为 CDN 直链，漫游卡/锁屏/原子随身听/媒体通知可显示封面。"
 }

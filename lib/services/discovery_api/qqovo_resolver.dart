@@ -267,6 +267,129 @@ class QqovoResolver {
     return null;
   }
 
+  /// 解析封面直链：qqovo `type=pic` 需签名，Image / MediaSession 用不了代理 URL。
+  /// 返回最终 CDN（如 `p*.music.126.net` / gtimg），失败返回 null。
+  Future<String?> resolvePicUrl({
+    required String server,
+    required String id,
+  }) async {
+    final songId = id.trim();
+    if (songId.isEmpty) return null;
+    if (server == 'netease') {
+      final map = await resolveNeteasePicUrls([songId]);
+      return map[songId];
+    }
+    for (final base in _bases) {
+      try {
+        final session = await _ensureSession(base);
+        if (session == null) continue;
+        final url =
+            '$base/api/meting?server=$server&type=pic&id=${Uri.encodeQueryComponent(songId)}';
+        final resp = await _dio.get(
+          url,
+          options: Options(
+            headers: _signedHeaders(base, url, session.key),
+            followRedirects: false,
+            validateStatus: (c) => c != null && c < 500,
+          ),
+        );
+        if (resp.statusCode == 403) {
+          _sessions.remove(base);
+          await _cookieJar.delete(Uri.parse(base));
+          continue;
+        }
+        final loc = resp.headers.value('location')?.trim();
+        if (loc != null && loc.isNotEmpty) {
+          final absolute = loc.startsWith('http')
+              ? loc
+              : (loc.startsWith('/') ? '$base$loc' : loc);
+          return _httpsifyPic(absolute);
+        }
+        final data = resp.data;
+        if (data is String) {
+          final s = data.trim();
+          if (s.startsWith('http')) return _httpsifyPic(s);
+          // 偶发返回 JSON 字符串
+          if (s.startsWith('{')) {
+            try {
+              final decoded = jsonDecode(s);
+              if (decoded is Map) {
+                final u = '${decoded['url'] ?? decoded['pic'] ?? ''}'.trim();
+                if (u.startsWith('http')) return _httpsifyPic(u);
+              }
+            } catch (_) {}
+          }
+        }
+        if (data is Map) {
+          final u = '${data['url'] ?? data['pic'] ?? ''}'.trim();
+          if (u.startsWith('http')) return _httpsifyPic(u);
+        }
+      } catch (e) {
+        debugPrint('[QqovoResolver] resolvePic $server/$id failed: $e');
+        _sessions.remove(base);
+      }
+    }
+    return null;
+  }
+
+  /// 网易官方公开详情接口批量取封面（无需 qqovo 签名，可直接给 Image/MediaSession）。
+  Future<Map<String, String>> resolveNeteasePicUrls(List<String> ids) async {
+    final clean = ids
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    if (clean.isEmpty) return const {};
+    final out = <String, String>{};
+    // 官方 ids 一次不宜过大
+    const chunk = 40;
+    for (var i = 0; i < clean.length; i += chunk) {
+      final slice = clean.sublist(
+        i,
+        i + chunk > clean.length ? clean.length : i + chunk,
+      );
+      final idsParam = '[${slice.join(',')}]';
+      try {
+        final resp = await _dio.get(
+          'https://music.163.com/api/song/detail',
+          queryParameters: {'ids': idsParam},
+          options: Options(
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                      '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+              'Referer': 'https://music.163.com/',
+            },
+            validateStatus: (c) => c != null && c < 500,
+          ),
+        );
+        final songs = resp.data is Map ? (resp.data['songs'] as List?) : null;
+        if (songs == null) continue;
+        for (final raw in songs) {
+          if (raw is! Map) continue;
+          final sid = '${raw['id'] ?? ''}'.trim();
+          final al = raw['al'] ?? raw['album'];
+          var pic = '';
+          if (al is Map) pic = '${al['picUrl'] ?? al['blurPicUrl'] ?? ''}'.trim();
+          if (pic.isEmpty) pic = '${raw['album_pic'] ?? ''}'.trim();
+          if (sid.isNotEmpty && pic.startsWith('http')) {
+            out[sid] = _httpsifyPic(pic);
+          }
+        }
+      } catch (e) {
+        debugPrint('[QqovoResolver] netease song detail failed: $e');
+      }
+    }
+    return out;
+  }
+
+  static String _httpsifyPic(String url) {
+    var u = url.trim();
+    if (u.startsWith('//')) u = 'https:$u';
+    if (u.startsWith('http://')) u = 'https://${u.substring(7)}';
+    return u;
+  }
+
   Future<_QqovoSession?> _ensureSession(String base) async {
     final cached = _sessions[base];
     if (cached != null && !cached.isExpired) return cached;

@@ -137,11 +137,80 @@ class DiscoveryApiClient {
       id: modeId ?? '',
     );
     if (data is! List) return const [];
-    return data
+    final songs = data
         .whereType<Map>()
         .map((e) => _songFromMeting(Map<String, dynamic>.from(e), source))
         .where((s) => s.remoteTrackId.isNotEmpty)
         .toList();
+    return enrichRemoteArtwork(songs);
+  }
+
+  /// 把 qqovo/空封面解析成 CDN 直链，供漫游卡 / 锁屏 / 原子随身听 / 通知栏使用。
+  Future<List<Song>> enrichRemoteArtwork(List<Song> songs) async {
+    if (songs.isEmpty) return songs;
+    final source = songs.first.source;
+    if (source == 'netease') {
+      final needIds = songs
+          .where((s) => _needsArtworkResolve(s.artworkUri))
+          .map((s) => s.remoteTrackId)
+          .where((id) => id.isNotEmpty)
+          .toList();
+      if (needIds.isEmpty) return songs;
+      final map = await QqovoResolver().resolveNeteasePicUrls(needIds);
+      if (map.isEmpty) return songs;
+      return songs.map((s) {
+        final pic = map[s.remoteTrackId];
+        if (pic == null || pic.isEmpty) return s;
+        return s.copyWith(artworkUri: pic);
+      }).toList();
+    }
+
+    // QQ / 汽水：仅对代理/空封面逐条解析（限并发）
+    final resolver = QqovoResolver();
+    final server = serverForSource(source ?? '');
+    if (server.isEmpty) return songs;
+    final out = List<Song>.from(songs);
+    const concurrency = 4;
+    for (var i = 0; i < out.length; i += concurrency) {
+      final slice = <int>[
+        for (var j = i; j < out.length && j < i + concurrency; j++) j,
+      ];
+      await Future.wait(slice.map((idx) async {
+        final s = out[idx];
+        if (!_needsArtworkResolve(s.artworkUri)) return;
+        final pic = await resolver.resolvePicUrl(
+          server: server,
+          id: s.remoteTrackId,
+        );
+        if (pic != null && pic.isNotEmpty) {
+          out[idx] = s.copyWith(artworkUri: pic);
+        }
+      }));
+    }
+    return out;
+  }
+
+  /// 单曲补封面（起播前兜底）。
+  Future<Song> ensureRemoteArtwork(Song song) async {
+    if (!song.isRemoteDiscovery) return song;
+    if (!_needsArtworkResolve(song.artworkUri)) return song;
+    final server = serverForSource(song.source ?? '');
+    if (server.isEmpty) return song;
+    final pic = await QqovoResolver().resolvePicUrl(
+      server: server,
+      id: song.remoteTrackId,
+    );
+    if (pic == null || pic.isEmpty) return song;
+    return song.copyWith(artworkUri: pic);
+  }
+
+  static bool _needsArtworkResolve(String? uri) {
+    if (uri == null || uri.trim().isEmpty) return true;
+    final host = Uri.tryParse(uri)?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return true;
+    return host.contains('qqovo') ||
+        host == '127.0.0.1' ||
+        host == 'localhost';
   }
 
   Future<List<Song>> getToplistSongs(
@@ -167,10 +236,11 @@ class DiscoveryApiClient {
 
   Future<List<Song>> _platformHotSongs({int num = 50}) async {
     final raw = await QqovoResolver().getPlatformHot(limit: num);
-    return raw
+    final songs = raw
         .map(_songFromPlatformHot)
         .where((s) => s.remoteTrackId.isNotEmpty)
         .toList();
+    return enrichRemoteArtwork(songs);
   }
 
   Song _songFromPlatformHot(Map<String, dynamic> raw) {
@@ -609,10 +679,10 @@ class DiscoveryApiClient {
     var pic = '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'.trim();
     final server = serverForSource(source);
     pic = _rewriteLocalhostMedia(pic, server);
-    // 网易 FM 常缺 pic：用 meting type=pic 兜底，否则漫游卡/锁屏全空白。
-    if (pic.isEmpty && id.isNotEmpty) {
-      pic =
-          'https://music.qqovo.cn/api/meting?server=$server&type=pic&id=${Uri.encodeQueryComponent(id)}';
+    // 勿写入未签名的 qqovo meting?type=pic：Image/CoverHttp/MediaSession 都会 403。
+    // 空封面留给 enrichRemoteArtwork / ensureRemoteArtwork 解析成 CDN 直链。
+    if (pic.isNotEmpty && _isQqovoProxyHost(pic)) {
+      pic = '';
     }
     return Song(
       id: '$source:$id',
@@ -624,6 +694,11 @@ class DiscoveryApiClient {
       isOnline: true,
       source: source,
     );
+  }
+
+  static bool _isQqovoProxyHost(String url) {
+    final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+    return host.contains('qqovo') || host == '127.0.0.1' || host == 'localhost';
   }
 
   static String serverForSource(String source) {
