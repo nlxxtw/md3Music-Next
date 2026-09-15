@@ -1,10 +1,10 @@
 {
-  "latestVersion": "13.2.0",
-  "latestBuild": 133,
+  "latestVersion": "13.3.0",
+  "latestBuild": 135,
   "minVersion": "0.0.0",
   "minBuild": 0,
   "force": false,
-  "url": "https://github.com/nlxxtw/md3Music-Next/releases/latest",
+  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.0",
   "title": "发现新版本",
-  "message": "发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
+  "message": "MD3Music v13.3.0 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
 }
