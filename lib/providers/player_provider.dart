@@ -95,7 +95,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   // 后台失败兜底重试定时器：App 在后台且当前歌曲加载失败时周期性重试，
   // 覆盖 connectivity 事件不触发的 Doze 网络挂起场景（网络恢复即自动续播）。
   Timer? _retryFailedTimer;
-  AudioQuality _audioQuality = AudioQuality.standard;
+  AudioQuality _audioQuality = AudioQuality.high;
   // 音质降级提示开关（设置→播放→音质降级提示）。默认关闭。
   bool _showQualityDowngradeToast = false;
   // 当前网络是否为 WiFi（移动数据等非 Wi-Fi 视为 false）。默认 true：
@@ -1950,6 +1950,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       return await DiscoveryApiClient().resolvePlayUrl(
         source: source,
         id: song.remoteTrackId,
+        quality: _audioQuality.value,
       );
     } catch (_) {
       return null;
@@ -3183,24 +3184,35 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
 
     try {
-      final apiClient = KugouApiClient();
-      final result = await apiClient.getSongUrlWithFallback(
-        song.id,
-        quality: _audioQuality.value,
-        albumId: song.albumId,
-        albumAudioId: song.albumAudioId,
-      );
+      String? playUrl;
+      String actualQuality = _audioQuality.value;
 
-      if (result == null || result.url.isEmpty) {
+      if (song.isRemoteDiscovery) {
+        playUrl = await _resolveRemoteDiscoveryUrl(song);
+      } else {
+        final apiClient = KugouApiClient();
+        final result = await apiClient.getSongUrlWithFallback(
+          song.id,
+          quality: _audioQuality.value,
+          albumId: song.albumId,
+          albumAudioId: song.albumAudioId,
+        );
+        if (result != null && result.url.isNotEmpty) {
+          playUrl = result.url;
+          actualQuality = result.quality;
+          _warnQualityDowngrade(_audioQuality.value, result.quality);
+        }
+      }
+
+      if (playUrl == null || playUrl.isEmpty) {
         _isResolvingUrl = false;
         _resolveError = _resolveErrorText(song);
         notifyListeners();
         return;
       }
 
-      _actualPlayingQuality = result.quality;
-      _warnQualityDowngrade(_audioQuality.value, result.quality);
-      final resolvedSong = song.copyWith(url: result.url);
+      _actualPlayingQuality = actualQuality;
+      final resolvedSong = song.copyWith(url: playUrl);
       _currentSong = resolvedSong;
       if (_playlist.isNotEmpty && _currentIndex >= 0) {
         _playlist[_currentIndex] = resolvedSong;
@@ -3217,7 +3229,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         // 同 playOnlinePlaylist:_playlist 中其他歌曲 url 仍为 null,
         // 用 setUrl 只切当前歌曲,避免 just_audio_web 的 null check 异常
         await _setUrlAndPlay(
-          result.url,
+          playUrl,
           seekTo: savedPosition,
           playAfter: wasPlaying,
         );

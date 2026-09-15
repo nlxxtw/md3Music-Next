@@ -61,7 +61,7 @@ class SettingsRepository {
 
   Future<String> getDefaultQuality() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyDefaultQuality) ?? '128';
+    return prefs.getString(_keyDefaultQuality) ?? '320';
   }
 
   /// WiFi 网络下的默认音质。从未单独设置过时回退到旧的全局默认音质，

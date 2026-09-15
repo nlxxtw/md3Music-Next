@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../data/models/song.dart';
 import 'qqovo_resolver.dart';
@@ -20,6 +23,14 @@ class DiscoveryApiClient {
 
   final String baseUrl;
   final Dio _dio;
+
+  static const _lunaHeaders = {
+    'User-Agent':
+        'com.luna.music/100198030 (Linux; U; Android 15; zh_CN_#Hans; '
+            'ABR-AL80; Build/V417IR;tt-ok/3.12.13.19)',
+    'Referer': 'https://www.qishui.com/',
+    'Accept': '*/*',
+  };
 
   Future<List<Song>> searchSongs({
     required String source,
@@ -107,56 +118,98 @@ class DiscoveryApiClient {
   }
 
   /// 解析可播 URL。
-  /// QQ/汽水优先走国内 qqovo（music.qqovo.cn），避免云端仍打海外 .top 导致切歌卡数秒；
-  /// 客户端失败再回落云端 `/api/v1/resolve`。
+  /// QQ/汽水优先走国内 qqovo（music.qqovo.cn）；[quality] 对齐播放器音质偏好。
+  /// 汽水直链在 ExoPlayer 上常「有进度无声」，落盘成本地文件再播。
   Future<String?> resolvePlayUrl({
     required String source,
     required String id,
+    String quality = '320',
   }) async {
+    String? url;
     if (source == 'qq') {
-      final local = await QqovoResolver().resolve(
+      url = await QqovoResolver().resolve(
         server: 'tencent',
         id: id,
-        qualities: const ['320', '128'],
+        preference: quality,
       );
-      if (local != null) return local;
     } else if (source == 'soda') {
-      // standard 更小、起播更快；exhigh 其次
-      final local = await QqovoResolver().resolve(
+      url = await QqovoResolver().resolve(
         server: 'qishui',
         id: id,
-        qualities: const ['standard', 'exhigh', '128', '320'],
+        preference: quality,
       );
-      if (local != null) return local;
     }
 
+    if (url == null) {
+      try {
+        final res = await _dio.get(
+          '$baseUrl/api/v1/resolve',
+          queryParameters: {
+            'source': source,
+            'id': id,
+            'quality': quality,
+          },
+          // 502 时服务端仍可能带 error 字段，不要直接抛掉
+          options: Options(
+            validateStatus: (code) => code != null && code < 600,
+          ),
+        );
+        final data = res.data;
+        if (data is Map) {
+          var remote = data['url']?.toString();
+          // Android 禁明文；QQ CDN https 可用，强制升格。
+          if (remote != null && remote.startsWith('http://')) {
+            remote = 'https://${remote.substring(7)}';
+          }
+          if (remote != null && remote.startsWith('http')) {
+            url = remote;
+          } else {
+            debugPrint('[DiscoveryApi] resolve empty source=$source id=$id '
+                'status=${res.statusCode} error=${data['error']}');
+          }
+        }
+      } catch (e) {
+        debugPrint('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
+      }
+    }
+
+    if (url == null) return null;
+    if (source == 'soda' && !kIsWeb) {
+      final local = await _materializeSodaStream(url, id);
+      if (local != null) return local;
+    }
+    return url;
+  }
+
+  /// 用 Luna 头把汽水 CDN 流拉到临时文件，规避 ExoPlayer 直链无声。
+  Future<String?> _materializeSodaStream(String url, String id) async {
     try {
-      final res = await _dio.get(
-        '$baseUrl/api/v1/resolve',
-        queryParameters: {
-          'source': source,
-          'id': id,
-        },
-        // 502 时服务端仍可能带 error 字段，不要直接抛掉
+      final dir = await getTemporaryDirectory();
+      final safe = id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+      final file = File('${dir.path}/soda_$safe.m4a');
+      await _dio.download(
+        url,
+        file.path,
         options: Options(
-          validateStatus: (code) => code != null && code < 600,
+          headers: _lunaHeaders,
+          receiveTimeout: const Duration(seconds: 90),
+          validateStatus: (code) => code != null && code < 500,
         ),
       );
-      final data = res.data;
-      if (data is Map) {
-        var url = data['url']?.toString();
-        // Android 禁明文；QQ CDN https 可用，强制升格。
-        if (url != null && url.startsWith('http://')) {
-          url = 'https://${url.substring(7)}';
-        }
-        if (url != null && url.startsWith('http')) return url;
-        debugPrint('[DiscoveryApi] resolve empty source=$source id=$id '
-            'status=${res.statusCode} error=${data['error']}');
+      final len = await file.length();
+      if (len < 2048) {
+        debugPrint('[DiscoveryApi] soda cache too small ($len) id=$id');
+        try {
+          await file.delete();
+        } catch (_) {}
+        return null;
       }
+      debugPrint('[DiscoveryApi] soda cached ${len}B → ${file.path}');
+      return file.uri.toString();
     } catch (e) {
-      debugPrint('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
+      debugPrint('[DiscoveryApi] soda materialize failed: $e');
+      return null;
     }
-    return null;
   }
 }
 

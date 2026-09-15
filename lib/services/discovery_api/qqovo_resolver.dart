@@ -24,20 +24,55 @@ class QqovoResolver {
   /// 复用 bootstrap，避免每切一首都重新握手（切歌延迟主因之一）。
   static final Map<String, _QqovoSession> _sessions = {};
 
+  /// 按用户音质偏好生成 qqovo quality 尝试列表（高→低）。
+  /// [preference] 为 [AudioQuality.value]：`128` / `320` / `flac` / `high`(Hi-Res)。
+  static List<String> qualitiesFor({
+    required String server,
+    String preference = '320',
+  }) {
+    final pref = preference.trim();
+    final wantLossless = pref == 'flac' || pref == 'high';
+    final wantHigh = wantLossless || pref == '320' || pref.isEmpty;
+    if (server == 'tencent') {
+      if (wantLossless) return const ['flac', 'ogg', '320', '128'];
+      if (wantHigh) return const ['320', '128'];
+      return const ['128', '320'];
+    }
+    // qishui / 汽水：lossless/exhigh 为高码率 AAC-M4A
+    if (wantLossless) {
+      return const [
+        'lossless',
+        'hires',
+        'exhigh',
+        '320',
+        'higher',
+        'standard',
+        '128',
+      ];
+    }
+    if (wantHigh) {
+      return const ['exhigh', '320', 'higher', 'standard', '128'];
+    }
+    return const ['standard', '128', 'exhigh'];
+  }
+
   Future<String?> resolve({
     required String server,
     required String id,
-    List<String> qualities = const ['320', '128', 'exhigh', 'standard'],
+    List<String>? qualities,
+    String preference = '320',
   }) async {
     final songId = id.trim();
     if (songId.isEmpty) return null;
+    final tryQualities =
+        qualities ?? qualitiesFor(server: server, preference: preference);
 
     for (final base in _bases) {
       final url = await _resolveOnBase(
         base: base,
         server: server,
         songId: songId,
-        qualities: qualities,
+        qualities: tryQualities,
       );
       if (url != null) return url;
     }
