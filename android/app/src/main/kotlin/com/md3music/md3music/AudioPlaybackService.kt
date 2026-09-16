@@ -1768,11 +1768,27 @@ class AudioPlaybackService : Service() {
 
     /// 将已缓存封面暴露为 content://，供原子随身听 / 锁屏 Glide 读取。
     /// 原子端会剥掉 bitmap，只拉 ALBUM_ART_URI；网易/汽水 CDN 无 Referer 常 403，
-    /// **禁止**把原始 https CDN 塞进 session（只能 content:// / 已有本地 file）。
+    /// **禁止**把原始 https CDN 塞进 session（只能 content://）。
+    /// 禁止 file:// 回退：跨进程原子端读不到，Glide 会崩。
+    private var lastGrantedCoverUri: String? = null
+    /** 上次注入媒体3会话的封面 URI / mediaId，开屏同封面跳过重注 */
+    @Volatile
+    private var lastInjectedSessionArtUri: String? = null
+    @Volatile
+    private var lastInjectedSessionMediaId: String = ""
+
     private fun coverUriForSession(artUrl: String?): String? {
         if (artUrl.isNullOrEmpty()) return null
         if (artUrl.startsWith("content://")) return artUrl
-        if (artUrl.startsWith("file://")) return artUrl
+        // 绝不把 file:// / https 交给原子
+        if (artUrl.startsWith("file://") ||
+            artUrl.startsWith("http://") ||
+            artUrl.startsWith("https://")
+        ) {
+            // http 需先落盘；已缓存则转 content://
+        } else if (!artUrl.startsWith("/")) {
+            return null
+        }
         val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
         val file = coverCacheFile(key) ?: coverCacheFile(artUrl)
         if (file == null || !file.exists() || file.length() < 32) {
@@ -1784,7 +1800,9 @@ class AudioPlaybackService : Service() {
                 "$packageName.fileprovider",
                 file,
             )
-            // 授权给 SystemUI / 原子随身听读封面
+            val uriStr = uri.toString()
+            // 同 URI 已授权过则跳过，避免进后台反复 grant 打爆权限表
+            if (uriStr == lastGrantedCoverUri) return uriStr
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
             for (pkg in listOf(
                 "com.android.systemui",
@@ -1799,14 +1817,11 @@ class AudioPlaybackService : Service() {
                 } catch (_: Exception) {
                 }
             }
-            uri.toString()
+            lastGrantedCoverUri = uriStr
+            uriStr
         } catch (e: Exception) {
             Log.w(TAG, "cover FileProvider failed: ${e.message}")
-            try {
-                Uri.fromFile(file).toString()
-            } catch (_: Exception) {
-                null
-            }
+            null
         }
     }
 
@@ -1979,6 +1994,13 @@ class AudioPlaybackService : Service() {
         if (mediaId.isNotEmpty() && mediaId != originalMediaId) {
             originalMediaId = mediaId
             metadataGeneration++
+            // 切歌清空原子歌词去重，避免沿用上一首的 LRC / grant
+            lastVivoLrcSentLrc = ""
+            lastVivoLrcMediaId = ""
+            lastVivoLrcSentAt = 0L
+            lastGrantedCoverUri = null
+            lastInjectedSessionArtUri = null
+            lastInjectedSessionMediaId = ""
             if (currentLyricInfoMediaId.isNotEmpty() &&
                 currentLyricInfoMediaId != mediaId) {
                 currentLyricInfo = ""
@@ -2067,16 +2089,26 @@ class AudioPlaybackService : Service() {
             // 息屏再开：同一首歌已有封面则跳过重下，避免网易无 Referer 超时拖垮主线程/线程池。
             if (sameArt && reuseBitmap != null && !reuseBitmap.isRecycled) {
                 Log.d(TAG, "封面未变，跳过重下 effectiveArtUrl=$effectiveArtUrl")
-                // 仍用本地 content:// 再注入一次：原子端剥 bitmap 后若还握着会 403 的网易 http URI，封面会一直是音符。
+                // 息屏再开同封面：只在尚无 content:// 会话封面时补一次，避免开屏反复 replaceMediaItem
                 val sessionArtUri = coverUriForSession(effectiveArtUrl)
-                AudioPlayer.updateActiveSessionMetadata(
-                    requestMediaId,
-                    requestGeneration,
-                    displayTitle,
-                    displayArtist,
-                    reuseBitmap,
-                    sessionArtUri,
-                )
+                if (sessionArtUri != null &&
+                    sessionArtUri == lastInjectedSessionArtUri &&
+                    requestMediaId == lastInjectedSessionMediaId
+                ) {
+                    Log.d(TAG, "会话封面未变，跳过重注 uri=$sessionArtUri")
+                } else {
+                    val sessionBmp = lastArtThumb?.takeIf { !it.isRecycled } ?: reuseBitmap
+                    AudioPlayer.updateActiveSessionMetadata(
+                        requestMediaId,
+                        requestGeneration,
+                        displayTitle,
+                        displayArtist,
+                        sessionBmp,
+                        sessionArtUri,
+                    )
+                    lastInjectedSessionArtUri = sessionArtUri
+                    lastInjectedSessionMediaId = requestMediaId
+                }
             } else {
             Log.d(TAG, "触发后台封面加载 effectiveArtUrl=$effectiveArtUrl fallback=$fallbackFilePath")
             Thread {
@@ -2115,18 +2147,21 @@ class AudioPlaybackService : Service() {
                         // 封面同步注入 just_audio 的媒体3 会话（该会话无封面，播放中会被 SystemUI
                         // 提为控制中心顶层）。用官方 replaceMediaItem 同 uri 替换当前 MediaItem，
                         // 只更新 metadata 不打断播放，保证控制中心/媒体3通知栏选中媒体3 会话时也有封面。
-                        // 原子端会剥掉 bitmap，只消费 ALBUM_ART_URI：只下发本地 content://
-                        // （CoverHttp 已带 Referer 下好）。禁止回退到原始 CDN https。
+                        // 原子端剥 bitmap 只认 ALBUM_ART_URI：下发 content:// + 小缩略图。
+                        // 大图进 Binder 在 vivo 上会拖死 SystemUI / 原子随身听（进后台卡机崩）。
                         val sessionArtUri = coverUriForSession(effectiveArtUrl)
+                        val sessionBmp = lastArtThumb?.takeIf { !it.isRecycled } ?: displayBitmap
                         AudioPlayer.updateActiveSessionMetadata(
                             requestMediaId,
                             requestGeneration,
                             displayTitle,
                             displayArtist,
-                            displayBitmap,
+                            sessionBmp,
                             sessionArtUri
                         )
-                        Log.i(TAG, "封面后台加载完成，已注入媒体3会话 bitmap=${displayBitmap.width}x${displayBitmap.height} uri=$sessionArtUri")
+                        lastInjectedSessionArtUri = sessionArtUri
+                        lastInjectedSessionMediaId = requestMediaId
+                        Log.i(TAG, "封面后台加载完成，已注入媒体3会话 bitmap=${sessionBmp.width}x${sessionBmp.height} uri=$sessionArtUri")
                     } else {
                         // 封面链路日志：所有来源均失败 → MediaSession 无 bitmap
                         Log.w(TAG, "封面后台加载失败(所有来源返回 null) effectiveArtUrl=$effectiveArtUrl " +
@@ -2263,9 +2298,13 @@ class AudioPlaybackService : Service() {
             lastIsFavorited,
             hasTranslationForCurrentTrack()
         )
-        // MD3Music fork: Vivo 原子随身听（vivomusicmix）歌词推送（歌词就绪后发一次，
-        // 定时器 25s 重发兜底）。
-        pushVivoAtomicExtras()
+        // 原子歌词：仅在歌词内容变化时推送；定时器 60s 兜底。
+        // 禁止在每次 performMetadataRefresh（歌词行 300ms 节流）里无脑重发整段 LRC，
+        // 否则进后台时原子端疯狂解析 extras → 卡机/闪崩。
+        val lrcNow = AudioPlayer.extractCarLyricsFromLyricInfo(effectiveLyricInfo) ?: ""
+        if (lrcNow.isNotEmpty() && lrcNow != lastVivoLrcSentLrc) {
+            pushVivoAtomicExtras()
+        }
         startVivoAtomicTimer()
     }
 
@@ -2274,34 +2313,47 @@ class AudioPlaybackService : Service() {
     private val vivoAtomicHandler = Handler(Looper.getMainLooper())
     private var lastVivoLrcSentAt = 0L
     private var lastVivoLrcMediaId = ""
+    private var vivoAtomicTimerStarted = false
 
     private fun startVivoAtomicTimer() {
+        if (vivoAtomicTimerStarted) return
+        vivoAtomicTimerStarted = true
         vivoAtomicHandler.removeCallbacksAndMessages(null)
         vivoAtomicHandler.postDelayed(object : Runnable {
             override fun run() {
                 pushVivoAtomicExtras()
-                vivoAtomicHandler.postDelayed(this, 25_000L)
+                vivoAtomicHandler.postDelayed(this, 60_000L)
             }
-        }, 25_000L)
+        }, 60_000L)
     }
 
     /// 原子随身听歌词：通过 legacy MediaSessionCompat 静态通道向活跃 session 重发
-    /// lrc_change extras（framework extras，25s 定时兜底：覆盖"原子在首次发送后才连上"）。
+    /// lrc_change extras（framework extras，60s 定时兜底：覆盖"原子在首次发送后才连上"）。
     /// meidia_id 必须与 hook 补进 metadata 的身份完全一致（title|artist），
     /// 否则原子 E0()/z1() 匹配失败 → 封面纯色、歌词不显示（实测 songId 数字 ID 不匹配）。
     /// 无整段歌词时安全跳过，不推空 Bundle。
     private fun pushVivoAtomicExtras() {
         try {
-            val mediaId = if (originalMediaId.isNotEmpty()) originalMediaId
-                else "$originalTitle|$originalArtist"
+            if (originalMediaId.isEmpty() && originalTitle.isEmpty()) return
             // 与 hook 补的 MEDIA_ID 保持一致：统一用 title|artist 身份
             val atomicMediaId = "$originalTitle|$originalArtist"
             if (originalTitle.isEmpty()) return
-            val lrc = AudioPlayer.extractCarLyricsFromLyricInfo(lyricInfoForCurrentTrack())
+            var lrc = AudioPlayer.extractCarLyricsFromLyricInfo(lyricInfoForCurrentTrack())
                 ?: return
+            // 原子 extras 过大时解析会拖死 SystemUI：12KB 足够行级 LRC
+            if (lrc.length > 12_000) {
+                lrc = lrc.substring(0, 12_000)
+            }
+            val now = System.currentTimeMillis()
+            if (lrc == lastVivoLrcSentLrc &&
+                atomicMediaId == lastVivoLrcMediaId &&
+                now - lastVivoLrcSentAt < 55_000L
+            ) {
+                return
+            }
             androidx.media3.session.legacy.MediaSessionCompat
                 .resendVivoLrcChange(lrc, atomicMediaId)
-            lastVivoLrcSentAt = System.currentTimeMillis()
+            lastVivoLrcSentAt = now
             lastVivoLrcMediaId = atomicMediaId
             lastVivoLrcSentLrc = lrc
         } catch (e: Throwable) {
@@ -2352,6 +2404,12 @@ class AudioPlaybackService : Service() {
         metadataRefreshHandler.removeCallbacksAndMessages(null)
         // MD3Music fork: 取消原子随身听 25s 重发定时器
         vivoAtomicHandler.removeCallbacksAndMessages(null)
+        vivoAtomicTimerStarted = false
+        lastVivoLrcSentLrc = ""
+        lastVivoLrcMediaId = ""
+        lastGrantedCoverUri = null
+        lastInjectedSessionArtUri = null
+        lastInjectedSessionMediaId = ""
         releaseWakeLock()
         // 释放缓存的封面 bitmap
         lastArtBitmap?.let { if (!it.isRecycled) it.recycle() }

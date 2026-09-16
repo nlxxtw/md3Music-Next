@@ -1,6 +1,7 @@
 package com.md3music.md3music
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -213,14 +214,27 @@ class LockScreenLyricActivity : Activity() {
 
         userPresentReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == ACTION_USER_PRESENT) {
+                val a = intent?.action ?: return
+                if (a == ACTION_USER_PRESENT) {
                     android.util.Log.i("LockScreenLyric", "user present, dismiss")
                     finish()
+                    return
+                }
+                if (a == Intent.ACTION_SCREEN_ON) {
+                    val kg = getSystemService(KeyguardManager::class.java)
+                    if (kg != null && !kg.isKeyguardLocked) {
+                        android.util.Log.i("LockScreenLyric", "SCREEN_ON unlocked, dismiss")
+                        finish()
+                    }
                 }
             }
         }
         try {
-            registerReceiver(userPresentReceiver, IntentFilter(ACTION_USER_PRESENT))
+            val filter = IntentFilter().apply {
+                addAction(ACTION_USER_PRESENT)
+                addAction(Intent.ACTION_SCREEN_ON)
+            }
+            registerReceiver(userPresentReceiver, filter)
         } catch (_: Exception) {}
 
         lyricView.applyLatestData()

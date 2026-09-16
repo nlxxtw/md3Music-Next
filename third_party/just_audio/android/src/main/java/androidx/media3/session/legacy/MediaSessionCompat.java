@@ -368,6 +368,10 @@ public class MediaSessionCompat {
   /// 定时器若更新它，会把 hook 里带正确身份的有效发送节流掉（实测导致原子收不到）。
   public static void resendVivoLrcChange(String wholeLrc, String mediaId) {
     if (wholeLrc == null || wholeLrc.isEmpty()) return;
+    // 原子 extras 过大时解析会拖死 SystemUI
+    if (wholeLrc.length() > 12_000) {
+      wholeLrc = wholeLrc.substring(0, 12_000);
+    }
     java.util.ArrayList<MediaSessionImplApi21> live;
     synchronized (sVivoLrcLock) {
       live = new java.util.ArrayList<>(sLiveApi21Impls);
@@ -389,13 +393,13 @@ public class MediaSessionCompat {
         + " lrcLen=" + wholeLrc.length() + " sessions=" + live.size());
   }
 
-  /// 原子随身听 lrc_change 是否需要发送：歌词变化立即发，相同歌词 25s 节流兜底
+  /// 原子随身听 lrc_change 是否需要发送：歌词变化立即发，相同歌词 60s 节流兜底
   /// （覆盖"车机/组件在播放开始后才连上"的情况）。
   static boolean shouldSendVivoLrcChange(String wholeLrc) {
     synchronized (sVivoLrcLock) {
       long now = SystemClock.elapsedRealtime();
       if (wholeLrc.equals(sVivoLrcLastLyric)
-          && now - sVivoLrcLastSentAt < 25_000L) {
+          && now - sVivoLrcLastSentAt < 60_000L) {
         return false;
       }
       sVivoLrcLastLyric = wholeLrc;
@@ -4148,7 +4152,11 @@ public class MediaSessionCompat {
         if (mediaIdProbe == null || mediaIdProbe.isEmpty()) {
           String titleFwk = fwkMetadata.getString(MediaMetadata.METADATA_KEY_TITLE);
           if (titleFwk != null && !titleFwk.isEmpty()) {
-            String artistFwk = fwkMetadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
+            // 优先 ALBUM_ARTIST（稳定歌手）；勿用可能被歌词行污染的 ARTIST。
+            String artistFwk = fwkMetadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST);
+            if (artistFwk == null || artistFwk.isEmpty()) {
+              artistFwk = fwkMetadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
+            }
             fwkMetadata = new MediaMetadata.Builder(fwkMetadata)
                 .putString(MediaMetadata.METADATA_KEY_MEDIA_ID,
                     titleFwk + "|" + (artistFwk == null ? "" : artistFwk))

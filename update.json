@@ -1,11 +1,11 @@
 {
-  "latestVersion": "13.3.30",
-  "latestBuild": 3039,
+  "latestVersion": "13.3.31",
+  "latestBuild": 3040,
   "minVersion": "0.0.0",
   "minBuild": 0,
-  "force": false,
-  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.30",
-  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.30/app-arm64-v8a-release.apk",
-  "title": "发现新版本",
-  "message": "NextMusic v13.3.30 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
+  "force": true,
+  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.31",
+  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.31/app-arm64-v8a-release.apk",
+  "title": "必须更新",
+  "message": "NextMusic v13.3.31：修复锁屏开屏/进后台时原子随身听与 SystemUI 卡死整机。请点在线安装。"
 }

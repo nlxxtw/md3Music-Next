@@ -1358,33 +1358,27 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                     next.isEmpty() ? null : next)) {
                 return;
             }
+            // 只记当前行，不 replaceMediaItem。通知栏 Karaoke 走 refreshActiveNotification；
+            // 每句改 session metadata 会打爆 vivo 原子/SystemUI（整机卡死）。
             sessionLyricLine = next;
-            MediaItem cur = player.getCurrentMediaItem();
-            if (cur == null) return;
-            MediaMetadata.Builder mb = cur.mediaMetadata.buildUpon();
-            paintSessionIdentity(mb);
-            player.replaceMediaItem(
-                    player.getCurrentMediaItemIndex(),
-                    cur.buildUpon().setMediaMetadata(mb.build()).build());
         } catch (Exception e) {
             Log.w("AudioFocusFork", "doApplySessionLyricLine failed: " + e);
         }
     }
 
-    /** title 用稳定歌名；有歌词行时 artist/subtitle 显示歌词，否则显示真实歌手。 */
+    /** 会话身份只用稳定歌名/歌手。歌词行不写进 MediaSession（通知栏单独渲染），
+     *  否则 vivo 原子把每次 metadata 当切歌 → 进后台卡死整机。 */
     private void paintSessionIdentity(MediaMetadata.Builder mb) {
         if (sessionStableTitle != null && !sessionStableTitle.isEmpty()) {
             mb.setTitle(sessionStableTitle);
         }
-        if (sessionLyricLine != null && !sessionLyricLine.isEmpty()) {
-            mb.setArtist(sessionLyricLine);
-            mb.setSubtitle(sessionLyricLine);
-        } else {
-            if (sessionStableArtist != null && !sessionStableArtist.isEmpty()) {
-                mb.setArtist(sessionStableArtist);
-            }
-            mb.setSubtitle((CharSequence) null);
+        if (sessionStableArtist != null && !sessionStableArtist.isEmpty()) {
+            mb.setArtist(sessionStableArtist);
+            mb.setAlbumArtist(sessionStableArtist);
         }
+        // 清掉可能残留的歌词 subtitle，避免 identity 抖动
+        mb.setSubtitle((CharSequence) null);
+        mb.setDisplayDescription((CharSequence) null);
     }
 
     private void rememberStableIdentity(String title, String artist) {
@@ -1452,14 +1446,10 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             MediaMetadata m = cur.mediaMetadata;
             String curTitle = m.title != null ? m.title.toString() : null;
             String wantTitle = sessionStableTitle;
-            String wantArtist = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
-                    ? sessionLyricLine
-                    : sessionStableArtist;
+            String wantArtist = sessionStableArtist;
             String curArtist = m.artist != null ? m.artist.toString() : null;
             String curSub = m.subtitle != null ? m.subtitle.toString() : null;
-            String wantSub = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
-                    ? sessionLyricLine
-                    : null;
+            String wantSub = null;
             if (equalsOrBothNull(curTitle, wantTitle)
                     && equalsOrBothNull(curArtist, wantArtist)
                     && equalsOrBothNull(curSub, wantSub)) {
@@ -1734,14 +1724,15 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             android.os.Bundle currentExtras = m.extras;
             String currentLyric = currentExtras != null
                     ? currentExtras.getString(SESSION_LYRIC_INFO_KEY) : null;
+            // 必须先截断再比较：否则 >16KB 时每次 current=capped、incoming=全文 → 永远 lyricChanged
+            // → 锁屏开屏/后台每 300ms replaceMediaItem 打爆原子与 SystemUI。
             String incomingLyric = (lyricInfo == null || lyricInfo.isEmpty()) ? null : lyricInfo;
+            if (incomingLyric != null && incomingLyric.length() > 16_384) {
+                incomingLyric = incomingLyric.substring(0, 16_384);
+            }
 
-            String wantArtist = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
-                    ? sessionLyricLine
-                    : sessionStableArtist;
-            String wantSub = (sessionLyricLine != null && !sessionLyricLine.isEmpty())
-                    ? sessionLyricLine
-                    : null;
+            String wantArtist = sessionStableArtist;
+            String wantSub = null;
 
             boolean titleChanged =
                     !(equalsOrBothNull(curTitle, sessionStableTitle)
@@ -1763,14 +1754,13 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             }
             // MD3Music fork: Vivo 车载歌词注入（随 lyricInfo 同步写入）。
             // 无整段歌词时移除字段（铁律：不写负状态，否则车机永久退回单行）。
+            // 整段 LRC 不写进 metadata extras（原子走 lrc_change；大字符串+bitmap 会卡死）。
             String carLrc = extractCarLyricsFromLyricInfo(incomingLyric);
+            newExtras.remove(UCAR_LYRICS_WHOLE);
+            newExtras.remove(UCAR_LYRICS_STATUS);
             if (carLrc == null || carLrc.isEmpty()) {
-                newExtras.remove(UCAR_LYRICS_WHOLE);
-                newExtras.remove(UCAR_LYRICS_STATUS);
                 newExtras.remove(VMM_SUPPORT_EVENT);
             } else {
-                newExtras.putString(UCAR_LYRICS_WHOLE, carLrc);
-                newExtras.putLong(UCAR_LYRICS_STATUS, 0L);
                 newExtras.putLong(VMM_SUPPORT_EVENT, 31L);
             }
             MediaMetadata updated = mb.setExtras(newExtras).build();
@@ -1803,23 +1793,37 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
             }
             int index = player.getCurrentMediaItemIndex();
             rememberStableIdentity(title, artist);
-            MediaMetadata.Builder mb = cur.mediaMetadata.buildUpon();
+            MediaMetadata m = cur.mediaMetadata;
+            String curTitle = m.title != null ? m.title.toString() : null;
+            String curArtist = m.artist != null ? m.artist.toString() : null;
+            String curUri = m.artworkUri != null ? m.artworkUri.toString() : null;
+            boolean uriOnlyArt = artUri != null && !artUri.isEmpty()
+                    && (artUri.startsWith("content://")
+                    || artUri.startsWith("http://")
+                    || artUri.startsWith("https://"));
+            // 息屏再开 / 同封面重入：身份与 URI 未变则跳过，避免原子醒来瞬间 Binder 风暴
+            if (equalsOrBothNull(curTitle, sessionStableTitle)
+                    && equalsOrBothNull(curArtist, sessionStableArtist)
+                    && equalsOrBothNull(curUri, artUri)
+                    && uriOnlyArt) {
+                return;
+            }
+            MediaMetadata.Builder mb = m.buildUpon();
             paintSessionIdentity(mb);
-            // MD3Music fork：注入 artworkUri（Lyricon autoSync / 外部读取封面用），
-            // 通知栏封面仍用 artworkData（bitmap，稳定，避免 artUri 异步加载闪烁）。
             if (artUri != null && !artUri.isEmpty()) {
                 mb.setArtworkUri(android.net.Uri.parse(artUri));
             }
-            if (art != null) {
-                // MD3Music fork：bitmap 可能已被 AudioPlaybackService.onDestroy 回收
-                // （服务被拒自停重建），此时跳过封面位图，仅保留 title/artist，避免
-                // "Can't compress a recycled bitmap" 异常导致整次注入失败。
+            // content:// / http URI 时只发 URI：bitmap 进 session 会被 vivo 降成 1x1，
+            // 且进后台 Binder 大包会拖死原子。通知栏封面走本进程 MediaStyle，不依赖此字段。
+            if (uriOnlyArt) {
+                mb.setArtworkData(null, null);
+            } else if (art != null) {
                 if (art.isRecycled()) {
                     Log.w("AudioFocusFork", "applySessionMetadata: art recycled, skip artwork");
                 } else {
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                art.compress(Bitmap.CompressFormat.JPEG, 90, baos);
-                mb.setArtworkData(baos.toByteArray(), MediaMetadata.PICTURE_TYPE_FRONT_COVER);
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    art.compress(Bitmap.CompressFormat.JPEG, 70, baos);
+                    mb.setArtworkData(baos.toByteArray(), MediaMetadata.PICTURE_TYPE_FRONT_COVER);
                 }
             }
             MediaItem updated = cur.buildUpon().setMediaMetadata(mb.build()).build();

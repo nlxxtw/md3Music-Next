@@ -18,7 +18,8 @@ object NotificationLyricStore {
     private const val TAG = "NotifLyric"
     private const val COLOR_SUNG = Color.WHITE
     private const val COLOR_UNSUNG = 0xFF9E9E9E.toInt()
-    private const val MIN_REFRESH_MS = 280L
+    // 开屏瞬间 SystemUI/原子会消化积压通知；过密 refresh 易卡死，略放宽节流
+    private const val MIN_REFRESH_MS = 480L
 
     @Volatile
     private var lineText: String = ""
@@ -72,7 +73,6 @@ object NotificationLyricStore {
         lineEndMs: Long = 0L,
     ) {
         val next = text.trim()
-        val lineChanged = next != lineText
         lineText = next
         this.lineStartMs = lineStartMs
         this.lineEndMs = if (lineEndMs > lineStartMs) lineEndMs else lineStartMs + 5000L
@@ -93,10 +93,7 @@ object NotificationLyricStore {
         words = parsed
 
         handler.removeCallbacks(tickRunnable)
-        if (lineChanged) {
-            // 锁屏 / 原子岛读 MediaSession，不读通知栏 Spannable；换行时同步纯文本
-            pushSessionLyricLine(lineText)
-        }
+        // 会话身份保持稳定歌名/歌手；歌词只走通知栏，避免原子 MEDIA_ID 抖动卡死整机
         requestRefresh(force = true)
         if (playing && lineText.isNotEmpty()) {
             scheduleNextTick()
