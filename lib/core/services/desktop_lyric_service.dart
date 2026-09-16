@@ -857,13 +857,15 @@ class DesktopLyricService {
     // 歌词加载只由带 token 的请求提交结果，不能直接读取 KugouProvider 的共享
     // current lyric；后者可能正被播放器页或 Lyricon 的另一首请求更新。
     if (!_awaitingLyric && _lines.isEmpty) {
-      // 失败退避：同一首歌上次拉取失败且尚未到退避时限时跳过本轮
-      if (_lyricNextRetryAt != null &&
+      // 失败退避：同一首歌上次拉取失败且尚未到退避时限时跳过拉取，
+      // 但仍继续锁屏进度 / 播放态对账，避免「暂无歌词」期间锁屏进度卡死。
+      final inBackoff = _lyricNextRetryAt != null &&
           _lyricFailedKey == song.id &&
-          DateTime.now().isBefore(_lyricNextRetryAt!)) {
-        return;
+          DateTime.now().isBefore(_lyricNextRetryAt!);
+      if (!inBackoff) {
+        _fetchLyricFor(song);
       }
-      _fetchLyricFor(song);
+      _pushLockScreenTick();
       return;
     }
 
@@ -879,8 +881,11 @@ class DesktopLyricService {
       _pushProgress(pos, dur);
     }
 
-    // Find current line
-    if (_lines.isEmpty) return;
+    // 歌词尚未就绪：只推锁屏进度，不卡死占位界面的时钟
+    if (_lines.isEmpty) {
+      _pushLockScreenTick();
+      return;
+    }
     final newIndex = _findLineIndex(posMs);
 
     // 行变化时推送（逐行模式：每行只在进入时推一次，不高频刷字色）
@@ -946,7 +951,11 @@ class DesktopLyricService {
             // isolate 解析期间可能已切歌：迟到结果直接丢弃
             if (!_isCurrentLyricRequest(token, requestedSongId)) return;
             _lines = lines;
-            if (_lines.isEmpty) _pushLyric('暂无歌词', '', placeholder: '暂无歌词');
+            if (_lines.isEmpty) {
+              _pushLyric('暂无歌词', '', placeholder: '暂无歌词');
+            } else {
+              _onLyricLinesReady();
+            }
             _markLockLyricLoaded(_lines.isEmpty ? '暂无歌词' : '');
             return;
           }
@@ -964,6 +973,8 @@ class DesktopLyricService {
           _lines = lines;
           if (_lines.isEmpty) {
             _pushLyric('暂无歌词', '', placeholder: '暂无歌词');
+          } else {
+            _onLyricLinesReady();
           }
           _markLockLyricLoaded(_lines.isEmpty ? '暂无歌词' : '');
           _lyricFailedKey = null;
@@ -1035,8 +1046,39 @@ class DesktopLyricService {
     // isolate 解析期间可能已切歌：迟到结果直接丢弃
     if (!_isCurrentLyricRequest(token, requestedSongId)) return;
     _lines = lines;
-    if (_lines.isEmpty) _pushLyric('暂无歌词', '', placeholder: '暂无歌词');
+    if (_lines.isEmpty) {
+      _pushLyric('暂无歌词', '', placeholder: '暂无歌词');
+    } else {
+      _onLyricLinesReady();
+    }
     _markLockLyricLoaded(_lines.isEmpty ? '暂无歌词' : '');
+  }
+
+  /// 歌词列表刚就绪：立刻推 lyricInfo / 当前行 / 锁屏全量，
+  /// 不等下一个 250ms tick（否则首句与原子歌词会空窗）。
+  void _onLyricLinesReady() {
+    _maybePushLyricInfo();
+    final player = _player;
+    if (player == null) return;
+    final posMs = player.position.inMilliseconds;
+    final idx = _findLineIndex(posMs);
+    _currentLineIndex = idx;
+    _lastLineSwitchAt = DateTime.now();
+    if (idx >= 0 && idx < _lines.length) {
+      final line = _lines[idx];
+      final next = (_doubleLine && idx + 1 < _lines.length)
+          ? _lines[idx + 1].text
+          : '';
+      final List<Map<String, Object?>> words = line.words.isNotEmpty
+          ? [
+              for (final w in line.words)
+                {'t': w.text, 's': w.startTime, 'd': w.duration},
+            ]
+          : const [];
+      _pushLyric(line.text, next, words: words, positionMs: posMs);
+      if (_superLyricEnabled) _pushSuperLyricLine(line);
+      if (idx + 1 < _lines.length) _scheduleLineBoundary(idx + 1);
+    }
   }
 
   int? _lastPushedPosMs;

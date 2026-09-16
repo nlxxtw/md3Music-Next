@@ -1075,10 +1075,13 @@ class AudioPlaybackService : Service() {
             TAG,
             "LyricInfo updated hasTranslation=$hasLyricTranslation " +
                 "payloadChars=${currentLyricInfo.length} " +
-                "mediaIdMatched=${incomingMediaId.isEmpty() || incomingMediaId == originalMediaId} " +
+                "mediaIdMatched=${incomingMediaId.isEmpty() || originalMediaId.isEmpty() || incomingMediaId == originalMediaId} " +
                 "generation=$incomingGeneration"
         )
         refreshMetadata()
+        // lyricInfo 一到立刻推原子 lrc_change，不等 300ms metadata 合并窗 / 60s 定时器。
+        // 仅内容变化时 pushVivoAtomicExtras 内部会真正下发，避免刷爆 SystemUI。
+        pushVivoAtomicExtras()
     }
 
     /** MediaSession / 广播接收器的既有入口：只有 action、无参数。 */
@@ -2366,8 +2369,12 @@ class AudioPlaybackService : Service() {
 
     private fun lyricInfoForCurrentTrack(): String {
         if (currentLyricInfo.isEmpty()) return ""
-        return if (currentLyricInfoMediaId.isEmpty() ||
-            currentLyricInfoMediaId == originalMediaId) currentLyricInfo else ""
+        // originalMediaId 尚未由 showNotification 写入时（冷启动 lyricInfo 先到），
+        // 不能因 mediaId 空串匹配失败而丢弃整段歌词——否则原子/车机首曲永久无词。
+        if (currentLyricInfoMediaId.isEmpty() || originalMediaId.isEmpty()) {
+            return currentLyricInfo
+        }
+        return if (currentLyricInfoMediaId == originalMediaId) currentLyricInfo else ""
     }
 
     private fun hasTranslationForCurrentTrack(): Boolean =

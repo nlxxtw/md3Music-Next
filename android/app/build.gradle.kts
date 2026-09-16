@@ -28,9 +28,10 @@ android {
 
 
     defaultConfig {
-        // vivo 原子随身听 / 原子歌词认证名单仍认 com.apple.android.music；
-        // 显示名由 strings.xml / Flutter 标为 NextMusic，状态栏可能仍显示 Apple Music。
-        applicationId = "com.apple.android.music"
+        // vivo 原子能 / 原子随身听：实测 com.salt.music 稳定（歌词+不卡机）；
+        // com.apple.android.music 会进 Apple Music 专用 SystemUI 路径，易卡顿且状态栏显示 Apple Music。
+        // 合作认证仍靠 manifest meta-data token，不依赖伪装包名。
+        applicationId = "com.salt.music"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = flutter.versionCode

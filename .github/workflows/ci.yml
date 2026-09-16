@@ -104,7 +104,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
-      # 构建 Release APK（仅 Skia arm64 主包，避免 Impeller 机型卡顿闪退）
+      # 构建 Release APK：Skia 主包 + Impeller 可选包（同 applicationId=com.salt.music）
       - name: Flutter build APK (release, skia, arm64)
         run: |
           flutter build apk --release --flavor skia --split-per-abi \
@@ -114,26 +114,42 @@ jobs:
           ls -lh build/app/outputs/flutter-apk/
           cp -f build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
-            ! -name 'app-arm64-v8a-release.apk' -delete || true
 
-      - name: Verify APK
+      - name: Flutter build APK (release, impeller, arm64)
         run: |
-          f=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          echo "=== $f ==="
-          if unzip -l "$f" > /dev/null; then
-            echo "  OK ($(du -h "$f" | cut -f1))"
-          else
-            echo "  CORRUPTED"
-            exit 1
-          fi
+          flutter build apk --release --flavor impeller --split-per-abi \
+            --target-platform=android-arm64 \
+            --tree-shake-icons \
+            --dart-define=APP_VERSION=ci-${{ github.sha }}
+          ls -lh build/app/outputs/flutter-apk/
+          find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
+            ! -name 'app-arm64-v8a-release.apk' \
+            ! -name 'app-arm64-v8a-impeller-release.apk' \
+            -delete || true
+
+      - name: Verify APKs
+        run: |
+          for f in \
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
+          do
+            echo "=== $f ==="
+            if unzip -l "$f" > /dev/null; then
+              echo "  OK ($(du -h "$f" | cut -f1))"
+            else
+              echo "  CORRUPTED"
+              exit 1
+            fi
+          done
 
       # 上传构建产物
-      - name: Upload arm64-v8a APK
+      - name: Upload arm64-v8a APKs
         uses: actions/upload-artifact@v4
         with:
           name: app-arm64-v8a-release
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -145,19 +161,21 @@ jobs:
           tag_name: ci-${{ github.sha }}
           name: CI Build ${{ github.sha }}
           body: |
-            ## CI 自动构建（Skia arm64 主包）
+            ## CI 自动构建（Skia + Impeller，包名 com.salt.music）
 
             **分支:** ${{ github.ref_name }}
             **提交:** ${{ github.sha }}
             **时间:** ${{ github.event.head_commit.timestamp }}
 
             ### 下载
-            - **app-arm64-v8a-release.apk** — Skia 主包（唯一）
+            - **app-arm64-v8a-release.apk** — Skia 主包
+            - **app-arm64-v8a-impeller-release.apk** — Impeller 包
 
             > 此为 CI 自动构建，非正式发布版本。
           prerelease: true
           generate_release_notes: true
           files: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

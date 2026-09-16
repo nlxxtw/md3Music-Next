@@ -18,8 +18,11 @@ object NotificationLyricStore {
     private const val TAG = "NotifLyric"
     private const val COLOR_SUNG = Color.WHITE
     private const val COLOR_UNSUNG = 0xFF9E9E9E.toInt()
-    // 开屏瞬间 SystemUI/原子会消化积压通知；过密 refresh 易卡死，略放宽节流
-    private const val MIN_REFRESH_MS = 480L
+    // 开屏瞬间 SystemUI/原子会消化积压通知；过密 refresh 易卡死
+    private const val MIN_REFRESH_MS = 600L
+    private const val TICK_MIN_MS = 280L
+    private const val TICK_MAX_MS = 700L
+    private const val TICK_DEFAULT_MS = 450L
 
     @Volatile
     private var lineText: String = ""
@@ -187,24 +190,24 @@ object NotificationLyricStore {
         handler.removeCallbacks(tickRunnable)
         if (!playing || lineText.isEmpty()) return
         val delay = if (words.isNotEmpty()) {
-            // 对齐下一字边界，夹在 180~450ms，兼顾流畅与通知刷新压力
+            // 对齐下一字边界，夹在 280~700ms，兼顾流畅与通知刷新压力
             val pos = estimatedPos()
-            var next = 320L
+            var next = TICK_DEFAULT_MS
             for (w in words) {
                 val edge = w.startMs
                 if (edge > pos + 20) {
-                    next = (edge - pos).coerceIn(180L, 450L)
+                    next = (edge - pos).coerceIn(TICK_MIN_MS, TICK_MAX_MS)
                     break
                 }
                 val end = w.startMs + w.durationMs
                 if (end > pos + 20) {
-                    next = (end - pos).coerceIn(180L, 450L)
+                    next = (end - pos).coerceIn(TICK_MIN_MS, TICK_MAX_MS)
                     break
                 }
             }
             next
         } else {
-            320L
+            TICK_DEFAULT_MS
         }
         handler.postDelayed(tickRunnable, delay)
     }

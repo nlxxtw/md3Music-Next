@@ -236,15 +236,14 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
       # ============================================================
-      # 6. 构建 Android APK
+      # 6. 构建 Android APK（Skia 主包 + Impeller 可选包，同为 com.salt.music）
       # ============================================================
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Flutter build APK (Skia arm64 only)
+      - name: Flutter build APK (Skia arm64)
         run: |
           set -o pipefail
-          # 主包改回 Skia：部分 vivo/OriginOS 上 Impeller 会卡顿、白圈卡住甚至闪退
           flutter build apk --release --flavor skia --split-per-abi \
             --target-platform=android-arm64 \
             --tree-shake-icons \
@@ -260,24 +259,56 @@ jobs:
             exit "$status"
           fi
           mkdir -p build/app/outputs/flutter-apk
-          ls -lh build/app/outputs/flutter-apk/
           cp -f build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
-            ! -name 'app-arm64-v8a-release.apk' -delete || true
           ls -lh build/app/outputs/flutter-apk/
 
-      - name: Verify APK
+      - name: Flutter build APK (Impeller arm64)
         run: |
-          f=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          echo "=== $f ==="
-          if unzip -l "$f" > /dev/null; then
-            echo "  OK ($(du -h "$f" | cut -f1))"
-          else
-            echo "  CORRUPTED"
-            exit 1
+          set -o pipefail
+          flutter build apk --release --flavor impeller --split-per-abi \
+            --target-platform=android-arm64 \
+            --tree-shake-icons \
+            --obfuscate --split-debug-info=build/app/outputs/symbols-impeller \
+            --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
+            --build-name=${{ steps.version.outputs.version }} \
+            --build-number=${{ steps.version.outputs.versionCode }} 2>&1 | tee build-impeller.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::group::Flutter/Dart errors (impeller)"
+            grep -E "Error:|error •|Error \(|FAILED|lib/.+\.dart:[0-9]+" build-impeller.log || true
+            echo "::endgroup::"
+            exit "$status"
           fi
+          # 保留稳定文件名，便于 Release / 手动下载
+          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
+          ls -lh build/app/outputs/flutter-apk/
 
+      - name: Keep release APKs only
+        run: |
+          cd build/app/outputs/flutter-apk
+          # 主包（Skia，update.json 指向）+ Impeller 可选包
+          find . -maxdepth 1 -type f -name '*.apk' \
+            ! -name 'app-arm64-v8a-release.apk' \
+            ! -name 'app-arm64-v8a-impeller-release.apk' \
+            -delete || true
+          ls -lh
+
+      - name: Verify APKs
+        run: |
+          for f in \
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
+          do
+            echo "=== $f ==="
+            if unzip -l "$f" > /dev/null; then
+              echo "  OK ($(du -h "$f" | cut -f1))"
+            else
+              echo "  CORRUPTED"
+              exit 1
+            fi
+          done
       # ============================================================
       # 7. 生成更新日志
       # ============================================================
@@ -327,7 +358,8 @@ jobs:
             echo "_Built: $(date -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
             echo "### Downloads"
-            echo "- **app-arm64-v8a-release.apk** — Skia 主包（唯一下载，兼容更稳）"
+            echo "- **app-arm64-v8a-release.apk** — Skia 主包（自动更新默认，兼容更稳）"
+            echo "- **app-arm64-v8a-impeller-release.apk** — Impeller 包（同包名 com.salt.music）"
             echo ""
             echo "### Commits (${RANGE:-最近 20 条})"
             echo ""
@@ -363,6 +395,7 @@ jobs:
           append_body: false  # 默认行为：用自动生成的 changelog 替换 release 描述
           files: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -375,48 +375,41 @@ class LockScreenLyricView(context: Context) : View(context) {
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
+            if (!isPlayingFlag || !isAttachedToWindow) {
+                frameRunning = false
+                return
+            }
             val now = SystemClock.uptimeMillis()
             val dtMs = if (lastFrameMs > 0) (now - lastFrameMs).toDouble() else 16.0
             lastFrameMs = now
             val dtSec = dtMs / 1000.0
-            if (isPlayingFlag) {
-                // 时钟自增推进：即使 Dart 短暂未推进度也连续行走，避免高亮卡死
-                smoothPosMs += dtMs
-                // 向低频真实位置（authoritative + 流失时间）做慢速指数校正，吸收漂移且不外抖
-                val target = (
-                    authoritativePosMs + (now - lastAuthorityMs)
-                    ).toDouble().coerceAtMost(durationMs.toDouble())
-                val diff = target - smoothPosMs
-                val k = 1.0 - exp(-corrRate * dtSec)
-                smoothPosMs += diff * k
-                if (abs(diff) < 0.5) smoothPosMs = target
-                advanceScroll(dtSec)
-                advanceLineAlpha(dtSec)
-                invalidate()
-            }
-            // 只要 attached 就无条件维持帧循环；isPlayingFlag 决定是否推进/重绘。
-            // 锁屏可见时帧循环持续存活，isPlaying 一旦为真立即恢复滚动，
-            // 彻底消除「首次锁屏/切歌竞态导致 Choreographer 空档而卡死」。
-            if (isAttachedToWindow) {
-                Choreographer.getInstance().postFrameCallback(this)
-            } else {
-                frameRunning = false
-            }
+            // 时钟自增推进：即使 Dart 短暂未推进度也连续行走，避免高亮卡死
+            smoothPosMs += dtMs
+            // 向低频真实位置（authoritative + 流失时间）做慢速指数校正，吸收漂移且不外抖
+            val target = (
+                authoritativePosMs + (now - lastAuthorityMs)
+                ).toDouble().coerceAtMost(durationMs.toDouble())
+            val diff = target - smoothPosMs
+            val k = 1.0 - exp(-corrRate * dtSec)
+            smoothPosMs += diff * k
+            if (abs(diff) < 0.5) smoothPosMs = target
+            advanceScroll(dtSec)
+            advanceLineAlpha(dtSec)
+            invalidate()
+            Choreographer.getInstance().postFrameCallback(this)
         }
     }
     private var frameRunning = false
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        // 只要视图可见就保持帧循环运行；isPlayingFlag 决定是否推进/重绘。
-        // 这保证首次锁屏/切歌与整包推送竞态导致 isPlaying 那一刻为 false 时，
-        // 帧循环仍活着，isPlaying 一转 true 立即恢复滚动，而非卡死等待重启时机。
-        startFrameLoop()
+        // 仅播放中跑帧循环；暂停时停表省 CPU。isPlaying 翻转由 applyProgressOnly 重启。
+        if (isPlayingFlag) startFrameLoop()
     }
 
     override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
-        if (visibility == VISIBLE) {
+        if (visibility == VISIBLE && isPlayingFlag) {
             startFrameLoop()
         } else {
             stopFrameLoop()
@@ -478,9 +471,13 @@ class LockScreenLyricView(context: Context) : View(context) {
         lastAuthorityMs = SystemClock.uptimeMillis()
         wasPlayingFlag = isPlayingFlag
         lastFrameMs = SystemClock.uptimeMillis()
-        // 只续不灭：帧循环的生命由可见性（onAttached/onWindowVisibility/onStop）统一管控，
-        // 避免此处按 isPlaying 停表造成竞态卡死；isPlaying 由 doFrame 内部判读。
-        if (isPlayingFlag) startFrameLoop()
+        // 播放中启动帧循环；暂停则停表并刷一帧静态画面（避免锁屏空转打满刷新率卡机）
+        if (isPlayingFlag) {
+            startFrameLoop()
+        } else {
+            stopFrameLoop()
+            invalidate()
+        }
 
         if (d.artUrl != lastArtUrl || d.fallbackFilePath != lastFallbackPath) {
             lastArtUrl = d.artUrl
@@ -492,7 +489,7 @@ class LockScreenLyricView(context: Context) : View(context) {
 
     /// 轻量进度应用：只改位置/播放态，不动布局。播放中由帧循环驱动重绘，
     /// 不额外 invalidate，避免与帧循环形成双重无效重绘导致卡顿。
-    /// 不在此停表：帧循环生命由可见性统一管控，isPlaying 翻转由 doFrame 即时读取。
+    /// 播放态翻转时启停帧循环，避免暂停期 Choreographer 空转拖死整机。
     fun applyProgressOnly() {
         val d = LockScreenLyricActivity.currentData()
         authoritativePosMs = d.currentPositionMs
@@ -507,7 +504,8 @@ class LockScreenLyricView(context: Context) : View(context) {
         if (isPlayingFlag) {
             startFrameLoop()
         } else {
-            invalidate() // 暂停：静态位置需刷新一帧（帧循环仍在，isPlaying 翻转即恢复滚动）
+            stopFrameLoop()
+            invalidate()
         }
     }
 
