@@ -1014,6 +1014,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           if (_playlist.isNotEmpty) {
             _currentSong = _playlist[_currentIndex];
             _recordHistory(_currentSong!);
+            _updateNotification();
+            notifyListeners();
           }
           // 异常结束时清除旧 URL，强制重新解析（避免复用过期链接）
           if (isAbnormalEnd && _currentSong != null && _currentSong!.isOnline) {
@@ -1336,6 +1338,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_playlist.length < 2) return '播放列表不足 2 首';
     // 单曲循环：同一首歌尾接头不做叠加
     if (_loopMode == AppLoopMode.one) return '单曲循环';
+    // QQ/汽水/网易：直链时效短，且走 setUrl 单曲模式；交叉淡化会先切活动播放器
+    // 再改「当前歌曲」账目，一旦 crossover 回调与列表不同步就会「只换声音、封面歌词卡住」。
+    if (_currentSong?.isRemoteDiscovery == true) return '远程发现源';
     if (_currentIndex >= _playlist.length - 1) {
       // 最后一首且非列表循环：播完就该停，不该叠加
       if (_loopMode != AppLoopMode.all) return '最后一首且非列表循环';
@@ -1347,6 +1352,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (nextIndex != null) {
       final currentSong = _currentSong;
       final nextSong = _playlist[nextIndex];
+      if (nextSong.isRemoteDiscovery) return '下一首为远程发现源';
       if (currentSong != null && _isSameAlbum(currentSong, nextSong)) {
         return '同专辑（同 disk 歌曲不叠加）';
       }
@@ -1444,6 +1450,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       var song = _playlist[nextIndex];
       String? quality;
+      // 远程发现不走交叉淡化（见 _crossfadeBlockReason）；此处再挡一层
+      if (song.isRemoteDiscovery) {
+        // ignore: avoid_print
+        print('[Crossfade] prepare 放弃：远程发现源 id=${song.id}');
+        return;
+      }
       if (song.isOnline && (song.url == null || song.url!.isEmpty)) {
         final result = await KugouApiClient().getSongUrlWithFallback(
           song.id,
@@ -2613,6 +2625,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       _updatePosition(Duration.zero); // 切歌时重置位置，避免恢复时跳到上一首的进度
       _recordHistory(_currentSong!);
       _updateNotification();
+      // 先通知 UI（封面/歌词/漫游卡），再 await 解析链接——否则远程源解析耗时长时
+      // 界面仍停在上一首，听感上像「只切了声音」。
+      notifyListeners();
       _saveState();
 
       final ok = await _resolveAndPlayCurrentSong(play: autoPlay);
@@ -2662,6 +2677,8 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       _resolveError = null;
       _updatePosition(Duration.zero);
       _recordHistory(_currentSong!);
+      _updateNotification();
+      notifyListeners();
 
       if (await _resolveAndPlayCurrentSong(play: autoPlay)) {
         // 切歌后刷新通知栏封面（投屏场景下 play=false 不会触发 playingStream 回调）
@@ -2747,10 +2764,15 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (_audioService != null) {
         // 异步把 content:// 全部解析为真实路径后建 source
         final resolvedSongs = await _resolveLocalPathsForBatch(newSongs);
-        final sources = resolvedSongs
-            .map((song) => _createAudioSource(song))
-            .toList();
-        await _audioService.addAllAudioSources(sources);
+        // 远程发现走 setUrl 单曲模式：_activeSource 在 setUrl 后已脱离活动播放器，
+        // 往 Concatenating 塞空 url 源既无意义，还可能在残留队列上误推进。
+        final nativeSongs =
+            resolvedSongs.where((s) => !s.isRemoteDiscovery).toList();
+        if (nativeSongs.isNotEmpty) {
+          final sources =
+              nativeSongs.map((song) => _createAudioSource(song)).toList();
+          await _audioService.addAllAudioSources(sources);
+        }
         // 回写真实路径到 _playlist
         for (final song in resolvedSongs) {
           final idx = _playlist.indexWhere((s) => s.id == song.id);

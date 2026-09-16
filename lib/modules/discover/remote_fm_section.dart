@@ -91,14 +91,28 @@ class _RemoteFmSectionState extends State<RemoteFmSection> {
     final player = context.watch<PlayerProvider>();
     final cs = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final songs = ds.fmSongs;
+    final fmSongs = ds.fmSongs;
 
     final playingId = player.currentSong?.id;
-    final playingIndex =
-        playingId == null ? -1 : songs.indexWhere((s) => s.id == playingId);
-    final currentIndex = playingIndex >= 0 ? playingIndex : 0;
+    final onStation =
+        playingId != null && fmSongs.any((s) => s.id == playingId);
+
+    // 正在听漫游时跟播放器队列走（含随机打乱顺序与续播追加），
+    // 否则下一首预览会和左边播放模式不一致，封面也卡在 fmSongs[0]。
+    final List<Song> songs;
+    final int currentIndex;
+    if (onStation && player.playlist.isNotEmpty) {
+      songs = player.playlist;
+      final idx = player.currentIndex;
+      currentIndex = (idx >= 0 && idx < songs.length) ? idx : 0;
+    } else {
+      songs = fmSongs;
+      final playingIndex =
+          playingId == null ? -1 : songs.indexWhere((s) => s.id == playingId);
+      currentIndex = playingIndex >= 0 ? playingIndex : 0;
+    }
     final current = songs.isEmpty ? null : songs[currentIndex];
-    final isPlaying = playingIndex >= 0 && player.isPlaying;
+    final isPlaying = onStation && player.isPlaying;
     final nextTracks =
         songs.isEmpty ? const <Song>[] : songs.sublist(currentIndex + 1);
 

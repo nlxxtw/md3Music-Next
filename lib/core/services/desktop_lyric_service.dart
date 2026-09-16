@@ -956,7 +956,7 @@ class DesktopLyricService {
           ? '${song.title} ${song.artist}'
           : song.title;
       final lyric = await _kugou!.getLyric(
-        song.isOnline ? song.id : '',
+        (song.isOnline && !song.isRemoteDiscovery) ? song.id : '',
         songName: searchName,
         fmt: 'lrc',
       );

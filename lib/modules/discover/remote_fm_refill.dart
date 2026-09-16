@@ -118,10 +118,12 @@ class RemoteFmRefill {
         final fallback = fresh.where((s) => s.remoteTrackId.isNotEmpty).toList();
         if (fallback.isEmpty) return false;
         _owned.addAll(fallback.map((s) => s.id));
+        discover.appendFmSongs(fallback);
         await player.appendPlaylist(fallback);
         return player.playlist.length > before;
       }
       _owned.addAll(unique.map((s) => s.id));
+      discover.appendFmSongs(unique);
       await player.appendPlaylist(unique);
       return true;
     } catch (e) {

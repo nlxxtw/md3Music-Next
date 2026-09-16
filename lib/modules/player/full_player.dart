@@ -994,15 +994,17 @@ class _FullPlayerState extends State<FullPlayer>
       // 内嵌歌词为空时回退到酷狗 API
       if (lyricText.isEmpty) {
         final kugouProvider = context.read<KugouProvider>();
-        // 本地歌曲的 songId 是 'local_<path>'，不是酷狗 hash，
-        // 传空 hash 让酷狗 API 完全基于 songName 搜索歌词
-        final lyricHash = (song is Song && !song.isOnline) ? '' : songId;
+        // 本地 / 远程发现的 id 不是酷狗 hash：传空 hash，按歌名搜索
+        final lyricHash = (song is Song &&
+                (!song.isOnline || song.isRemoteDiscovery))
+            ? ''
+            : songId;
         // 搜索关键词用"歌名 艺术家"提高匹配准确度
         final searchName = (song is Song && song.artist != '未知艺术家')
             ? '${song.title} ${song.artist}'
             : song.title;
         await kugouProvider.getLyric(lyricHash, songName: searchName);
-        if (mounted) {
+        if (mounted && _lastSongId == songId) {
           final lyric = kugouProvider.lyric;
           lyricText =
               lyric?.displayKrcLyric ??
@@ -1012,7 +1014,7 @@ class _FullPlayerState extends State<FullPlayer>
         }
       }
 
-      if (mounted) {
+      if (mounted && _lastSongId == songId) {
         setState(() {
           _isLoadingLyrics = false;
           // MD3 渲染器（LyricsView）内置的 LRC/KRC 正则无法解析 TTML 与
@@ -1022,7 +1024,7 @@ class _FullPlayerState extends State<FullPlayer>
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && _lastSongId == songId) {
         setState(() {
           _isLoadingLyrics = false;
           _lyrics = '';
@@ -1774,6 +1776,7 @@ class _FullPlayerState extends State<FullPlayer>
     // style 2 频谱在背景层，封面仍用圆盘慢转。
     final showBars = _spectrumEnabled && _spectrumStyle < 2;
     return SpectrumArtwork(
+      key: ValueKey(currentSong.id),
       artworkUri: currentSong.artworkUri,
       fallbackFilePath: currentSong.localPath,
       isPlaying: isPlaying,

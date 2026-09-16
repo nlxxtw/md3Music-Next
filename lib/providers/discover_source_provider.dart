@@ -167,6 +167,27 @@ class DiscoverSourceProvider extends ChangeNotifier {
     player.onPlaylistEnd = _fmRefill!.onQueueEnd;
   }
 
+  /// 漫游续播追加：与酷狗 [KugouProvider.appendFmSongs] 对齐，
+  /// 卡片列表必须跟播放队列一起变长，否则播放到续播段时
+  /// `indexWhere` 失败会卡在第 0 首封面。
+  void appendFmSongs(List<Song> songs) {
+    if (songs.isEmpty) return;
+    final existing = _fmSongs.map((s) => s.id).toSet();
+    final unique = songs.where((s) => !existing.contains(s.id)).toList();
+    if (unique.isEmpty) return;
+    _fmSongs = [..._fmSongs, ...unique];
+    final prev = _cache[_source];
+    if (prev != null) {
+      _cache[_source] = _RemoteCache(
+        playlists: prev.playlists,
+        toplists: prev.toplists,
+        fmSongs: _fmSongs,
+        fmMode: prev.fmMode,
+      );
+    }
+    notifyListeners();
+  }
+
   @override
   void dispose() {
     _fmRefill?.retire();

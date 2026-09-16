@@ -763,16 +763,18 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
       // 内嵌歌词为空时回退到酷狗 API
       if (lyricText.isEmpty) {
         final kugouProvider = context.read<KugouProvider>();
-        // 本地歌曲的 songId 是 'local_<path>'，不是酷狗 hash，
-        // 传空 hash 让酷狗 API 完全基于 songName 搜索歌词
-        final lyricHash = (song is Song && !song.isOnline) ? '' : songId;
+        // 本地 / 远程发现的 id 不是酷狗 hash：传空 hash，按歌名搜索
+        final lyricHash = (song is Song &&
+                (!song.isOnline || song.isRemoteDiscovery))
+            ? ''
+            : songId;
         // 搜索关键词用"歌名 艺术家"提高匹配准确度
         final searchName = (song is Song && song.artist != '未知艺术家')
             ? '${song.title} ${song.artist}'
             : song.title;
         await kugouProvider.getLyric(lyricHash, songName: searchName);
 
-        if (mounted) {
+        if (mounted && _lastSongId == songId) {
           final lyric = kugouProvider.lyric;
           lyricText =
               lyric?.displayKrcLyric ??
@@ -784,7 +786,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
         }
       }
 
-      if (mounted) {
+      if (mounted && _lastSongId == songId) {
         setState(() {
           _isLoadingLyrics = false;
           // 先解析（增强型 LRC / KRC 的翻译、罗马音可能在解析后合并进每行）
@@ -811,7 +813,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && _lastSongId == songId) {
         setState(() {
           _isLoadingLyrics = false;
           _parsedLyrics = const [];
@@ -845,6 +847,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
   ) {
     final showBars = _spectrumEnabled && _spectrumStyle < 2;
     return SpectrumArtwork(
+      key: ValueKey(currentSong.id),
       artworkUri: currentSong.artworkUri,
       fallbackFilePath: currentSong.localPath,
       isPlaying: playerProvider.isPlaying,
@@ -2022,6 +2025,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                           duration: const Duration(milliseconds: 500),
                           curve: Curves.easeOutBack,
                           child: SpectrumArtwork(
+                            key: ValueKey(currentSong.id),
                             artworkUri: currentSong.artworkUri,
                             fallbackFilePath: currentSong.localPath,
                             isPlaying: playerProvider.isPlaying,
@@ -2047,6 +2051,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
               child: AspectRatio(
                 aspectRatio: 1,
                 child: SpectrumArtwork(
+                  key: ValueKey(currentSong.id),
                   artworkUri: currentSong.artworkUri,
                   fallbackFilePath: currentSong.localPath,
                   isPlaying: playerProvider.isPlaying,
