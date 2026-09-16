@@ -279,7 +279,9 @@ class QqovoResolver {
       final map = await resolveNeteasePicUrls([songId]);
       final hit = map[songId];
       if (hit != null && hit.isNotEmpty) return hit;
-      // 官方 detail 被墙/失败时回退 qqovo 签名 pic 跟跳转
+      // 官方 detail 被墙/失败时：先走 meting song 取 CDN，再 type=pic 跟跳转
+      final fromSong = await _picFromMetingSong(server: server, id: songId);
+      if (fromSong != null && fromSong.isNotEmpty) return fromSong;
     }
     for (final base in _bases) {
       try {
@@ -334,6 +336,37 @@ class QqovoResolver {
     return null;
   }
 
+  /// meting `type=song` 常直接带回 CDN pic（比 type=pic 跟跳更稳）。
+  Future<String?> _picFromMetingSong({
+    required String server,
+    required String id,
+  }) async {
+    try {
+      final data = await meting(server: server, type: 'song', id: id);
+      Map? raw;
+      if (data is Map) {
+        raw = data;
+      } else if (data is List && data.isNotEmpty && data.first is Map) {
+        raw = Map<String, dynamic>.from(data.first as Map);
+      }
+      if (raw == null) return null;
+      var pic = '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'.trim();
+      if (pic.isEmpty) return null;
+      pic = _httpsifyPic(pic);
+      final host = Uri.tryParse(pic)?.host.toLowerCase() ?? '';
+      // 仍是代理则不可用（Image/MediaSession 会 403）
+      if (host.contains('qqovo') ||
+          host == '127.0.0.1' ||
+          host == 'localhost') {
+        return null;
+      }
+      if (pic.startsWith('http')) return pic;
+    } catch (e) {
+      debugPrint('[QqovoResolver] meting song pic $server/$id failed: $e');
+    }
+    return null;
+  }
+
   /// 网易官方公开详情接口批量取封面（无需 qqovo 签名，可直接给 Image/MediaSession）。
   Future<Map<String, String>> resolveNeteasePicUrls(List<String> ids) async {
     final clean = ids
@@ -345,41 +378,56 @@ class QqovoResolver {
     final out = <String, String>{};
     // 官方 ids 一次不宜过大
     const chunk = 40;
+    // music.163.com 在部分网络会被墙/超时，多镜像兜底。
+    const hosts = <String>[
+      'https://music.163.com',
+      'https://interface.music.163.com',
+      'https://api.music.163.com',
+    ];
     for (var i = 0; i < clean.length; i += chunk) {
       final slice = clean.sublist(
         i,
         i + chunk > clean.length ? clean.length : i + chunk,
       );
-      final idsParam = '[${slice.join(',')}]';
-      try {
-        final resp = await _dio.get(
-          'https://music.163.com/api/song/detail',
-          queryParameters: {'ids': idsParam},
-          options: Options(
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
-                      '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-              'Referer': 'https://music.163.com/',
-            },
-            validateStatus: (c) => c != null && c < 500,
-          ),
-        );
-        final songs = resp.data is Map ? (resp.data['songs'] as List?) : null;
-        if (songs == null) continue;
-        for (final raw in songs) {
-          if (raw is! Map) continue;
-          final sid = '${raw['id'] ?? ''}'.trim();
-          final al = raw['al'] ?? raw['album'];
-          var pic = '';
-          if (al is Map) pic = '${al['picUrl'] ?? al['blurPicUrl'] ?? ''}'.trim();
-          if (pic.isEmpty) pic = '${raw['album_pic'] ?? ''}'.trim();
-          if (sid.isNotEmpty && pic.startsWith('http')) {
-            out[sid] = _httpsifyPic(pic);
+      final pending = slice.where((id) => !out.containsKey(id)).toList();
+      if (pending.isEmpty) continue;
+      final idsParam = '[${pending.join(',')}]';
+      for (final host in hosts) {
+        if (pending.every(out.containsKey)) break;
+        try {
+          final resp = await _dio.get(
+            '$host/api/song/detail',
+            queryParameters: {'ids': idsParam},
+            options: Options(
+              headers: {
+                'User-Agent':
+                    'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                        '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                'Referer': 'https://music.163.com/',
+              },
+              validateStatus: (c) => c != null && c < 500,
+              receiveTimeout: const Duration(seconds: 8),
+              sendTimeout: const Duration(seconds: 8),
+            ),
+          );
+          final songs = resp.data is Map ? (resp.data['songs'] as List?) : null;
+          if (songs == null) continue;
+          for (final raw in songs) {
+            if (raw is! Map) continue;
+            final sid = '${raw['id'] ?? ''}'.trim();
+            final al = raw['al'] ?? raw['album'];
+            var pic = '';
+            if (al is Map) {
+              pic = '${al['picUrl'] ?? al['blurPicUrl'] ?? ''}'.trim();
+            }
+            if (pic.isEmpty) pic = '${raw['album_pic'] ?? ''}'.trim();
+            if (sid.isNotEmpty && pic.startsWith('http')) {
+              out[sid] = _httpsifyPic(pic);
+            }
           }
+        } catch (e) {
+          debugPrint('[QqovoResolver] netease song detail $host failed: $e');
         }
-      } catch (e) {
-        debugPrint('[QqovoResolver] netease song detail failed: $e');
       }
     }
     return out;

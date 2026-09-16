@@ -111,7 +111,14 @@ class _RemoteFmSectionState extends State<RemoteFmSection> {
           playingId == null ? -1 : songs.indexWhere((s) => s.id == playingId);
       currentIndex = playingIndex >= 0 ? playingIndex : 0;
     }
-    final current = songs.isEmpty ? null : songs[currentIndex];
+    // 起播后 ensureRemoteArtwork 写在 player.currentSong 上；
+    // 队列里同 id 项可能仍是空封面，漫游卡必须优先读播放器当前曲。
+    final Song? current;
+    if (onStation && player.currentSong != null) {
+      current = player.currentSong;
+    } else {
+      current = songs.isEmpty ? null : songs[currentIndex];
+    }
     final isPlaying = onStation && player.isPlaying;
     final nextTracks =
         songs.isEmpty ? const <Song>[] : songs.sublist(currentIndex + 1);

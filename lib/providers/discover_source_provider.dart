@@ -152,7 +152,39 @@ class DiscoverSourceProvider extends ChangeNotifier {
   ) async {
     if (songs.isEmpty) return;
     await player.playOnlinePlaylist(songs, startIndex);
-    bindFmRefill(player, seed: songs);
+    // playOnlinePlaylist 内 enrich 后的 CDN 封面写回漫游列表
+    final artById = <String, String>{
+      for (final s in player.playlist)
+        if (s.artworkUri != null && s.artworkUri!.isNotEmpty)
+          s.id: s.artworkUri!,
+    };
+    if (artById.isNotEmpty) {
+      var changed = false;
+      final next = <Song>[];
+      for (final s in _fmSongs) {
+        final art = artById[s.id];
+        if (art != null && s.artworkUri != art) {
+          next.add(s.copyWith(artworkUri: art));
+          changed = true;
+        } else {
+          next.add(s);
+        }
+      }
+      if (changed) {
+        _fmSongs = next;
+        final prev = _cache[_source];
+        if (prev != null) {
+          _cache[_source] = _RemoteCache(
+            playlists: prev.playlists,
+            toplists: prev.toplists,
+            fmSongs: _fmSongs,
+            fmMode: prev.fmMode,
+          );
+        }
+        notifyListeners();
+      }
+    }
+    bindFmRefill(player, seed: _fmSongs.isNotEmpty ? _fmSongs : songs);
   }
 
   void bindFmRefill(PlayerProvider player, {required List<Song> seed}) {
@@ -176,6 +208,28 @@ class DiscoverSourceProvider extends ChangeNotifier {
     final unique = songs.where((s) => !existing.contains(s.id)).toList();
     if (unique.isEmpty) return;
     _fmSongs = [..._fmSongs, ...unique];
+    final prev = _cache[_source];
+    if (prev != null) {
+      _cache[_source] = _RemoteCache(
+        playlists: prev.playlists,
+        toplists: prev.toplists,
+        fmSongs: _fmSongs,
+        fmMode: prev.fmMode,
+      );
+    }
+    notifyListeners();
+  }
+
+  /// 播放器补到 CDN 封面后回写漫游列表，避免卡仍显示音符占位。
+  void patchFmArtwork(Song song) {
+    final art = song.artworkUri;
+    if (art == null || art.isEmpty) return;
+    final i = _fmSongs.indexWhere((s) => s.id == song.id);
+    if (i < 0) return;
+    if (_fmSongs[i].artworkUri == art) return;
+    final next = List<Song>.from(_fmSongs);
+    next[i] = next[i].copyWith(artworkUri: art);
+    _fmSongs = next;
     final prev = _cache[_source];
     if (prev != null) {
       _cache[_source] = _RemoteCache(

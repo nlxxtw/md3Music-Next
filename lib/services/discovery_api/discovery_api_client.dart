@@ -685,13 +685,19 @@ class DiscoveryApiClient {
 
   Song _songFromMeting(Map<String, dynamic> raw, String source) {
     final urlStr = '${raw['url'] ?? ''}';
+    final picRaw =
+        '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'.trim();
+    final lrcStr = '${raw['lrc'] ?? ''}'.trim();
     var id = '${raw['id'] ?? raw['songId'] ?? raw['mid'] ?? ''}'.trim();
-    if (id.isEmpty && urlStr.contains('id=')) {
-      id = Uri.tryParse(urlStr)?.queryParameters['id'] ?? '';
-      if (id.isEmpty) {
-        final m = RegExp(r'[?&]id=([^&]+)').firstMatch(urlStr);
-        id = m != null ? Uri.decodeComponent(m.group(1)!) : '';
-      }
+    // qqovo 网易 FM 常无 id/name，只有 title/author + 127.0.0.1 代理 url/pic。
+    if (id.isEmpty) {
+      id = _extractMetingMediaId(urlStr);
+    }
+    if (id.isEmpty) {
+      id = _extractMetingMediaId(picRaw);
+    }
+    if (id.isEmpty) {
+      id = _extractMetingMediaId(lrcStr);
     }
     final artistRaw = raw['artist'] ?? raw['author'];
     final artist = artistRaw is List
@@ -704,7 +710,7 @@ class DiscoveryApiClient {
           ? (durationRaw / 1000).round()
           : durationRaw.toInt();
     }
-    var pic = '${raw['pic'] ?? raw['cover'] ?? raw['album_pic'] ?? ''}'.trim();
+    var pic = picRaw;
     final server = serverForSource(source);
     pic = _rewriteLocalhostMedia(pic, server);
     // 勿写入未签名的 qqovo meting?type=pic：Image/CoverHttp/MediaSession 都会 403。
@@ -722,6 +728,16 @@ class DiscoveryApiClient {
       isOnline: true,
       source: source,
     );
+  }
+
+  /// 从 qqovo/本地代理 media URL 取出 id=（网易 FM 封面/音源都靠这个）。
+  static String _extractMetingMediaId(String url) {
+    final u = url.trim();
+    if (u.isEmpty || !u.contains('id=')) return '';
+    final fromUri = Uri.tryParse(u)?.queryParameters['id']?.trim() ?? '';
+    if (fromUri.isNotEmpty) return fromUri;
+    final m = RegExp(r'[?&]id=([^&]+)').firstMatch(u);
+    return m != null ? Uri.decodeComponent(m.group(1)!).trim() : '';
   }
 
   static bool _isQqovoProxyHost(String url) {

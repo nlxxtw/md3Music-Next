@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import 'discovery_cover_image.dart';
 import 'local_artwork_image.dart';
 
 /// 智能封面图组件：根据 artworkUri 类型选择不同的加载策略。
@@ -157,8 +158,7 @@ class _SmartArtworkImageState extends State<SmartArtworkImage> {
       child = _placeholder(colorScheme);
     } else if (uri.startsWith('http://') ||
         uri.startsWith('https://')) {
-      // http(s):// 在线封面用 Image.network
-      // 如果已经从本地持久化兜底拿到了字节，直接用 Image.memory 显示
+      // http(s)://：网易/汽水/QQ CDN 常需 Referer，走 DiscoveryCoverImage。
       if (_localArtworkBytes != null) {
         child = Image.memory(
           _localArtworkBytes!,
@@ -168,49 +168,28 @@ class _SmartArtworkImageState extends State<SmartArtworkImage> {
           cacheWidth: decodeWidth,
         );
       } else {
-        child = Image.network(
-          uri,
+        child = SizedBox(
           width: isFill ? double.infinity : widget.size,
           height: isFill ? double.infinity : widget.size,
-          fit: BoxFit.cover,
-          cacheWidth: decodeWidth,
-          errorBuilder: (_, _, _) {
-            // 在线加载失败：先尝试本地持久化兜底，再退到 fallbackFilePath / 占位符
-            if (!_hasTriedLocalFallback) {
-              _hasTriedLocalFallback = true;
-              _loadLocalArtworkFallback();
-            }
-            if (_localArtworkBytes != null) {
-              return Image.memory(
-                _localArtworkBytes!,
-                width: isFill ? double.infinity : widget.size,
-                height: isFill ? double.infinity : widget.size,
-                fit: BoxFit.cover,
-                cacheWidth: decodeWidth,
-              );
-            }
-            if (widget.fallbackFilePath != null) {
-              return LocalArtworkImage(
-                filePath: widget.fallbackFilePath!,
-                size: widget.size,
-                borderRadius: widget.borderRadius,
-              );
-            }
-            return _placeholder(colorScheme);
-          },
-          loadingBuilder: (context, child, progress) {
-            if (progress == null) return child;
-            return Container(
-              width: isFill ? double.infinity : widget.size,
-              height: isFill ? double.infinity : widget.size,
-              color: colorScheme.surfaceContainerHighest,
-              child: Icon(
-                Icons.hourglass_empty,
-                size: isFill ? 40 : widget.size * 0.4,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            );
-          },
+          child: DiscoveryCoverImage(
+            url: uri,
+            fit: BoxFit.cover,
+            memCacheWidth: decodeWidth,
+            error: _HttpArtFallback(
+              onFirstError: () {
+                if (_hasTriedLocalFallback) return;
+                _hasTriedLocalFallback = true;
+                _loadLocalArtworkFallback();
+              },
+              localBytes: _localArtworkBytes,
+              fallbackFilePath: widget.fallbackFilePath,
+              size: widget.size,
+              isFill: isFill,
+              borderRadius: widget.borderRadius,
+              decodeWidth: decodeWidth,
+              placeholder: _placeholder(colorScheme),
+            ),
+          ),
         );
       }
     } else if (uri.startsWith('file://')) {
@@ -278,5 +257,62 @@ class _SmartArtworkImageState extends State<SmartArtworkImage> {
         color: colorScheme.onSurfaceVariant,
       ),
     );
+  }
+}
+
+/// 在线封面失败时的占位：触发一次本地兜底读取。
+class _HttpArtFallback extends StatefulWidget {
+  final VoidCallback onFirstError;
+  final Uint8List? localBytes;
+  final String? fallbackFilePath;
+  final double size;
+  final bool isFill;
+  final double borderRadius;
+  final int? decodeWidth;
+  final Widget placeholder;
+
+  const _HttpArtFallback({
+    required this.onFirstError,
+    required this.localBytes,
+    required this.fallbackFilePath,
+    required this.size,
+    required this.isFill,
+    required this.borderRadius,
+    required this.decodeWidth,
+    required this.placeholder,
+  });
+
+  @override
+  State<_HttpArtFallback> createState() => _HttpArtFallbackState();
+}
+
+class _HttpArtFallbackState extends State<_HttpArtFallback> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onFirstError();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.localBytes != null) {
+      return Image.memory(
+        widget.localBytes!,
+        width: widget.isFill ? double.infinity : widget.size,
+        height: widget.isFill ? double.infinity : widget.size,
+        fit: BoxFit.cover,
+        cacheWidth: widget.decodeWidth,
+      );
+    }
+    if (widget.fallbackFilePath != null) {
+      return LocalArtworkImage(
+        filePath: widget.fallbackFilePath!,
+        size: widget.size,
+        borderRadius: widget.borderRadius,
+      );
+    }
+    return widget.placeholder;
   }
 }

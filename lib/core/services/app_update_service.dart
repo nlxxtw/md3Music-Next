@@ -268,8 +268,9 @@ class AppUpdateService {
   /// 经加速节点下载 APK 并调起系统安装器。
   Future<void> downloadAndInstall(
     BuildContext context,
-    AppUpdateInfo info,
-  ) async {
+    AppUpdateInfo info, {
+    bool force = false,
+  }) async {
     if (kIsWeb) {
       await openUpdateUrl(overrideUrl: info.acceleratedApkUrl);
       return;
@@ -312,13 +313,14 @@ class AppUpdateService {
               },
             ),
             actions: [
-              TextButton(
-                onPressed: () {
-                  cancelled = true;
-                  Navigator.of(ctx).pop();
-                },
-                child: const Text('取消'),
-              ),
+              if (!force)
+                TextButton(
+                  onPressed: () {
+                    cancelled = true;
+                    Navigator.of(ctx).pop();
+                  },
+                  child: const Text('取消'),
+                ),
             ],
           ),
         );
@@ -376,18 +378,18 @@ class AppUpdateService {
         'path': file.path,
       });
       if (ok != true && context.mounted) {
-        // 安装器唤起失败：退回浏览器打开加速直链
-        await openUpdateUrl(overrideUrl: apkUrl, preferAccelApk: false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法唤起安装器，请重试在线安装')),
+        );
       }
     } catch (e, st) {
       debugPrint('downloadAndInstall failed: $e\n$st');
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('下载失败：$e，改用浏览器打开…')),
+          SnackBar(content: Text('下载失败：$e')),
         );
       }
-      await openUpdateUrl(overrideUrl: apkUrl, preferAccelApk: false);
     } finally {
       progress.dispose();
     }
@@ -444,27 +446,13 @@ class AppUpdateService {
               '最新：${info.latestVersion} (${info.latestBuild})',
             ),
             actions: [
-              if (!force)
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text('稍后'),
-                ),
-              TextButton(
-                onPressed: () async {
-                  await AppUpdateService.instance.openUpdateUrl(
-                    overrideUrl: info.url,
-                    preferAccelApk: false,
-                  );
-                },
-                child: const Text('打开网页'),
-              ),
               FilledButton(
                 onPressed: () async {
                   // 强制更新不要先关掉弹窗：装完前仍挡住返回。
                   if (!force) Navigator.of(ctx).pop();
                   if (!context.mounted) return;
                   await AppUpdateService.instance
-                      .downloadAndInstall(context, info);
+                      .downloadAndInstall(context, info, force: force);
                 },
                 child: const Text('在线安装'),
               ),

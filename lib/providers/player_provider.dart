@@ -1848,7 +1848,17 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (songs.isEmpty) return;
     _resetAbnormalRetry();
 
-    final startSong = songs[startIndex];
+    var playSongs = songs;
+    // 远程发现：整表补 CDN 封面，漫游卡上下一首预览与迷你条才有图
+    if (playSongs.any((s) => s.isRemoteDiscovery)) {
+      try {
+        playSongs = await DiscoveryApiClient().enrichRemoteArtwork(playSongs);
+      } catch (e) {
+        debugPrint('[Player] enrichRemoteArtwork before play failed: $e');
+      }
+    }
+
+    final startSong = playSongs[startIndex.clamp(0, playSongs.length - 1)];
     final isRemote = startSong.isRemoteDiscovery;
 
     // 可选扩展：播放前解析本地已持久化的音频（默认关闭）
@@ -1867,7 +1877,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    _loadPlaylist(songs, startIndex);
+    _loadPlaylist(playSongs, startIndex.clamp(0, playSongs.length - 1));
     _currentSong = _playlist[_currentIndex];
     _isResolvingUrl = true;
     _resolveError = null;

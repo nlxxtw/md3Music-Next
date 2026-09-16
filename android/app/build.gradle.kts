@@ -28,9 +28,9 @@ android {
 
 
     defaultConfig {
-        // 勿用 com.apple.android.music：OriginOS 原子能状态栏会按包名显示「Apple Music」。
-        // 原子随身听合作认证走 manifest meta-data token，不依赖伪装包名。
-        applicationId = "com.md3music.md3music"
+        // vivo 原子随身听 / 原子歌词认证名单仍认 com.apple.android.music；
+        // 显示名由 strings.xml / Flutter 标为 NextMusic，状态栏可能仍显示 Apple Music。
+        applicationId = "com.apple.android.music"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = flutter.versionCode
