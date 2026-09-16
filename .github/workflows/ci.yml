@@ -111,11 +111,12 @@ jobs:
             --target-platform=android-arm,android-arm64 \
             --tree-shake-icons \
             --dart-define=APP_VERSION=ci-${{ github.sha }}
-          cp -f build/app/outputs/flutter-apk/app-impeller-arm64-v8a-release.apk \
+          ls -lh build/app/outputs/flutter-apk/
+          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          cp -f build/app/outputs/flutter-apk/app-impeller-armeabi-v7a-release.apk \
+          cp -f build/app/outputs/flutter-apk/app-armeabi-v7a-impeller-release.apk \
             build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk || true
-          rm -f build/app/outputs/flutter-apk/app-*-x86_64-release.apk \
+          rm -f build/app/outputs/flutter-apk/app-x86_64-*-release.apk \
             build/app/outputs/flutter-apk/app-x86_64-release.apk || true
 
       - name: Verify APKs

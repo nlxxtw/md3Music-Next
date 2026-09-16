@@ -273,21 +273,22 @@ jobs:
             echo "::endgroup::"
             exit "$status"
           fi
-          # 对外主包名保持 app-arm64-v8a-release.apk（update.json / 老用户直链）
+          # flavor + split-per-abi 实际文件名：app-{abi}-{flavor}-release.apk
           mkdir -p build/app/outputs/flutter-apk
-          cp -f build/app/outputs/flutter-apk/app-impeller-arm64-v8a-release.apk \
+          ls -lh build/app/outputs/flutter-apk/
+          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          cp -f build/app/outputs/flutter-apk/app-impeller-armeabi-v7a-release.apk \
+          cp -f build/app/outputs/flutter-apk/app-armeabi-v7a-impeller-release.apk \
             build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-          rm -f build/app/outputs/flutter-apk/app-*-x86_64-release.apk \
+          rm -f build/app/outputs/flutter-apk/app-x86_64-*-release.apk \
             build/app/outputs/flutter-apk/app-x86_64-release.apk || true
 
       - name: Verify APKs
         run: |
           ls -lh build/app/outputs/flutter-apk/
           for f in build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-                   build/app/outputs/flutter-apk/app-impeller-arm64-v8a-release.apk \
-                   build/app/outputs/flutter-apk/app-skia-arm64-v8a-release.apk; do
+                   build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
+                   build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk; do
             echo "=== $f ==="
             if unzip -l "$f" > /dev/null; then
               echo "  OK ($(du -h "$f" | cut -f1))"
@@ -347,8 +348,8 @@ jobs:
             echo ""
             echo "### Downloads"
             echo "- **app-arm64-v8a-release.apk** — 推荐（Impeller，约 30–40MB）"
-            echo "- **app-impeller-arm64-v8a-release.apk** — 同上（带引擎名）"
-            echo "- **app-skia-arm64-v8a-release.apk** — Skia 兼容包（花屏/异常时用）"
+            echo "- **app-arm64-v8a-impeller-release.apk** — 同上（带引擎名）"
+            echo "- **app-arm64-v8a-skia-release.apk** — Skia 兼容包（花屏/异常时用）"
             echo "- **\*-armeabi-v7a-\*** — 较旧 32 位设备"
             echo ""
             echo "### Commits (${RANGE:-最近 20 条})"
@@ -386,10 +387,10 @@ jobs:
           files: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
             build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            build/app/outputs/flutter-apk/app-impeller-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-skia-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-impeller-armeabi-v7a-release.apk
-            build/app/outputs/flutter-apk/app-skia-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
+            build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-impeller-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-skia-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

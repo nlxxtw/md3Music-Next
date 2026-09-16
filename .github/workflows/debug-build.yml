@@ -81,9 +81,13 @@ jobs:
       - name: Flutter build APK
         run: |
           flutter build apk --${{ inputs.build_type }} --flavor impeller
-          # 方便 Artifacts 下载名稳定
+          ls -lh build/app/outputs/flutter-apk/
+          # 无 split-per-abi：app-impeller-release.apk；有 ABI：app-arm64-v8a-impeller-release.apk
           if [ -f build/app/outputs/flutter-apk/app-impeller-${{ inputs.build_type }}.apk ]; then
             cp -f build/app/outputs/flutter-apk/app-impeller-${{ inputs.build_type }}.apk \
+              build/app/outputs/flutter-apk/app-${{ inputs.build_type }}.apk
+          elif [ -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-${{ inputs.build_type }}.apk ]; then
+            cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-${{ inputs.build_type }}.apk \
               build/app/outputs/flutter-apk/app-${{ inputs.build_type }}.apk
           fi
 
