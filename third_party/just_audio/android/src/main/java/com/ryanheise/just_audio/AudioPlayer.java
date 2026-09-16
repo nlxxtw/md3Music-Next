@@ -1378,7 +1378,7 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         }
         // 清掉可能残留的歌词 subtitle，避免 identity 抖动
         mb.setSubtitle((CharSequence) null);
-        mb.setDisplayDescription((CharSequence) null);
+        mb.setDescription((CharSequence) null);
     }
 
     private void rememberStableIdentity(String title, String artist) {
