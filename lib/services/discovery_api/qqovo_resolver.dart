@@ -94,29 +94,24 @@ class QqovoResolver {
         '128': 'standard',
       });
     }
-    // netease
+    // netease：VIP 只试顶两档，随后直接无损/极高，避免 10 次串行卡死
     const chain = [
       'sky',
       'jymaster',
-      'dolby',
-      'jyeffect',
-      'hires',
       'lossless',
       'exhigh',
-      'higher',
       'standard',
-      '128',
     ];
     return _qualityCascade(chain, pref, const {
       'sky': 'sky',
       'jymaster': 'jymaster',
-      'dolby': 'dolby',
-      'jyeffect': 'jyeffect',
+      'dolby': 'sky',
+      'jyeffect': 'jymaster',
       'atmos': 'sky',
       'master': 'jymaster',
       'viper_hifi': 'jymaster',
-      'hires': 'hires',
-      'high': 'jymaster', // AudioQuality.hires
+      'hires': 'lossless',
+      'high': 'jymaster',
       'flac': 'lossless',
       'lossless': 'lossless',
       'exhigh': 'exhigh',
@@ -350,9 +345,9 @@ class QqovoResolver {
           '[QqovoResolver] try $server/$songId q=$quality -> $label '
           'rank=$rank reqRank=$reqRank auth=${auth.isNotEmpty}',
         );
-        // 未降级（或更高）则收下并停止；降级则继续试，可能下一档反而更高
-        if (rank >= reqRank) {
-          return hit;
+        // 命中请求档，或已有无损级以上可播：立刻收下，避免 VIP 链把起播拖死
+        if (rank >= reqRank || bestRank >= 80) {
+          return best ?? hit;
         }
       }
       return best;

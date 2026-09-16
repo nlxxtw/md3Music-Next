@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,11 +45,26 @@ class _RemoteCache {
     this.toplists = const [],
     this.fmSongs = const [],
     this.fmMode = FmModes.defaultMode,
+    this.savedAtMs = 0,
   });
   final List<DiscoveryPlaylist> playlists;
   final List<DiscoveryToplist> toplists;
   final List<Song> fmSongs;
   final String fmMode;
+  final int savedAtMs;
+
+  bool get hasContent =>
+      playlists.isNotEmpty || toplists.isNotEmpty || fmSongs.isNotEmpty;
+
+  /// 网易云固定歌单可长缓存；QQ/汽水推荐稍短。
+  bool isFresh(DiscoverMusicSource source) {
+    if (savedAtMs <= 0 || !hasContent) return false;
+    final age = DateTime.now().millisecondsSinceEpoch - savedAtMs;
+    final ttl = source == DiscoverMusicSource.netease
+        ? const Duration(hours: 24)
+        : const Duration(hours: 3);
+    return age < ttl.inMilliseconds;
+  }
 }
 
 /// 发现页音源切换 + QQ/汽水/网易远程推荐/榜单/私人漫游缓存。
@@ -58,6 +75,7 @@ class DiscoverSourceProvider extends ChangeNotifier {
   static const _prefsKey = 'discover_music_source';
   static const _fmModePrefsPrefix = 'discover_fm_mode_';
   static const _autoRoamingPrefsKey = 'discover_auto_roaming';
+  static const _diskCachePrefix = 'discover_remote_cache_v1_';
 
   final DiscoveryApiClient _client;
   final Map<DiscoverMusicSource, _RemoteCache> _cache = {};
@@ -70,6 +88,7 @@ class DiscoverSourceProvider extends ChangeNotifier {
   DiscoverMusicSource _source = DiscoverMusicSource.kugou;
   bool _loading = false;
   bool _fmLoading = false;
+  bool _refreshing = false;
   bool _autoRoaming = true;
   String? _error;
   RemoteFmRefill? _fmRefill;
@@ -123,12 +142,13 @@ class DiscoverSourceProvider extends ChangeNotifier {
       if (saved != null && s.apiSource != null) {
         _fmModes[s] = FmModes.normalize(saved, s.apiSource!);
       }
+      await _loadDiskCache(s, prefs);
     }
     _autoRoaming = prefs.getBool(_autoRoamingPrefsKey) ?? true;
     _restoreFromCache(_source);
     notifyListeners();
     if (!isKugou) {
-      await refreshRemote();
+      await _refreshIfNeeded(awaitNetwork: false);
     }
   }
 
@@ -179,7 +199,10 @@ class DiscoverSourceProvider extends ChangeNotifier {
             toplists: prev.toplists,
             fmSongs: _fmSongs,
             fmMode: prev.fmMode,
+            savedAtMs: prev.savedAtMs,
           );
+          // ignore: discarded_futures
+          _persistDiskCache(_source, _cache[_source]!);
         }
         notifyListeners();
       }
@@ -215,7 +238,10 @@ class DiscoverSourceProvider extends ChangeNotifier {
         toplists: prev.toplists,
         fmSongs: _fmSongs,
         fmMode: prev.fmMode,
+        savedAtMs: prev.savedAtMs,
       );
+      // ignore: discarded_futures
+      _persistDiskCache(_source, _cache[_source]!);
     }
     notifyListeners();
   }
@@ -237,7 +263,10 @@ class DiscoverSourceProvider extends ChangeNotifier {
         toplists: prev.toplists,
         fmSongs: _fmSongs,
         fmMode: prev.fmMode,
+        savedAtMs: prev.savedAtMs,
       );
+      // ignore: discarded_futures
+      _persistDiskCache(_source, _cache[_source]!);
     }
     notifyListeners();
   }
@@ -258,7 +287,8 @@ class DiscoverSourceProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, next.name);
     if (!isKugou) {
-      await refreshRemote();
+      // 切源：有缓存秒开；后台补拉，不挡 UI
+      await _refreshIfNeeded(awaitNetwork: false);
     } else {
       _loading = false;
       _fmLoading = false;
@@ -297,52 +327,120 @@ class DiscoverSourceProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshRemote() async {
+  /// [awaitNetwork] 为 false 时：有内容立刻返回，过期则后台刷新。
+  Future<void> _refreshIfNeeded({required bool awaitNetwork}) async {
+    final cached = _cache[_source];
+    final hasContent = cached?.hasContent == true;
+    final fresh = cached != null && cached.isFresh(_source);
+    if (hasContent && fresh) return;
+    if (hasContent && !awaitNetwork) {
+      // ignore: discarded_futures
+      refreshRemote(force: true);
+      return;
+    }
+    await refreshRemote(force: true);
+  }
+
+  Future<void> refreshRemote({bool force = true}) async {
     final apiSource = _source.apiSource;
     if (apiSource == null) return;
     final sourceKey = _source;
     final mode = fmMode;
 
-    _loading = true;
-    _fmLoading = true;
+    // 未强制刷新且内存/磁盘缓存仍新鲜：直接展示，不转圈
+    final existing = _cache[sourceKey];
+    if (!force && existing != null && existing.isFresh(sourceKey)) {
+      _restoreFromCache(sourceKey);
+      _loading = false;
+      _fmLoading = false;
+      _error = null;
+      notifyListeners();
+      return;
+    }
+
+    if (_refreshing) return;
+    _refreshing = true;
+
+    final hadContent = existing?.hasContent == true ||
+        _playlists.isNotEmpty ||
+        _toplists.isNotEmpty ||
+        _fmSongs.isNotEmpty;
+    // 有缓存时只顶栏细条，避免整页转圈把界面卡住
+    _loading = !hadContent;
+    _fmLoading = _fmSongs.isEmpty;
     _error = null;
     notifyListeners();
 
     try {
-      final playlistsFuture = _client.getRecommend(apiSource);
+      final playlistsFuture = () async {
+        try {
+          return await _client.getRecommend(apiSource);
+        } catch (_) {
+          return existing?.playlists ?? _playlists;
+        }
+      }();
       final toplistsFuture = () async {
         try {
           return await _client.getToplists(source: apiSource);
         } catch (_) {
-          return const <DiscoveryToplist>[];
+          return existing?.toplists ?? _toplists;
         }
       }();
       final fmFuture = () async {
         try {
           return await _client.getFmSongs(apiSource, mode: mode);
         } catch (_) {
-          return const <Song>[];
+          return existing?.fmSongs ?? _fmSongs;
         }
       }();
       final results = await Future.wait([
-        playlistsFuture,
-        toplistsFuture,
-        fmFuture,
+        playlistsFuture.timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => existing?.playlists ?? _playlists,
+        ),
+        toplistsFuture.timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => existing?.toplists ?? _toplists,
+        ),
+        fmFuture.timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => existing?.fmSongs ?? _fmSongs,
+        ),
       ]);
       if (_source != sourceKey) return;
-      _playlists = results[0] as List<DiscoveryPlaylist>;
-      _toplists = results[1] as List<DiscoveryToplist>;
-      _fmSongs = results[2] as List<Song>;
-      _cache[sourceKey] = _RemoteCache(
+      final nextPlaylists = results[0] as List<DiscoveryPlaylist>;
+      final nextToplists = results[1] as List<DiscoveryToplist>;
+      final nextFm = results[2] as List<Song>;
+      final gotAnything = nextPlaylists.isNotEmpty ||
+          nextToplists.isNotEmpty ||
+          nextFm.isNotEmpty;
+      if (!gotAnything && hadContent) {
+        _restoreFromCache(sourceKey);
+        return;
+      }
+      _playlists = nextPlaylists.isNotEmpty ? nextPlaylists : _playlists;
+      _toplists = nextToplists.isNotEmpty ? nextToplists : _toplists;
+      _fmSongs = nextFm.isNotEmpty ? nextFm : _fmSongs;
+      final entry = _RemoteCache(
         playlists: _playlists,
         toplists: _toplists,
         fmSongs: _fmSongs,
         fmMode: mode,
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
       );
+      _cache[sourceKey] = entry;
+      // ignore: discarded_futures
+      _persistDiskCache(sourceKey, entry);
     } catch (e) {
       if (_source != sourceKey) return;
-      _error = e.toString();
+      // 有旧缓存时失败不盖空白页
+      if (!hadContent) {
+        _error = e.toString();
+      } else {
+        debugPrint('[DiscoverSource] refresh failed, keep cache: $e');
+      }
     } finally {
+      _refreshing = false;
       if (_source == sourceKey) {
         _loading = false;
         _fmLoading = false;
@@ -364,12 +462,16 @@ class DiscoverSourceProvider extends ChangeNotifier {
       if (_source != sourceKey) return;
       _fmSongs = songs;
       final prev = _cache[sourceKey];
-      _cache[sourceKey] = _RemoteCache(
+      final entry = _RemoteCache(
         playlists: prev?.playlists ?? _playlists,
         toplists: prev?.toplists ?? _toplists,
         fmSongs: songs,
         fmMode: mode,
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
       );
+      _cache[sourceKey] = entry;
+      // ignore: discarded_futures
+      _persistDiskCache(sourceKey, entry);
     } catch (e) {
       debugPrint('[DiscoverSource] refreshFmOnly failed: $e');
     } finally {
@@ -377,6 +479,68 @@ class DiscoverSourceProvider extends ChangeNotifier {
         _fmLoading = false;
         notifyListeners();
       }
+    }
+  }
+
+  Future<void> _loadDiskCache(
+    DiscoverMusicSource source,
+    SharedPreferences prefs,
+  ) async {
+    final raw = prefs.getString('$_diskCachePrefix${source.name}');
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final map = jsonDecode(raw);
+      if (map is! Map) return;
+      final playlists = ((map['playlists'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => DiscoveryPlaylist.fromJson(
+                Map<String, dynamic>.from(e),
+                source.apiSource ?? source.name,
+              ))
+          .toList();
+      final toplists = ((map['toplists'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => DiscoveryToplist.fromJson(
+                Map<String, dynamic>.from(e),
+                source: source.apiSource ?? source.name,
+              ))
+          .toList();
+      final fmSongs = ((map['fmSongs'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((e) => Song.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      final fmMode = '${map['fmMode'] ?? FmModes.defaultMode}';
+      final savedAtMs = (map['savedAtMs'] as num?)?.toInt() ?? 0;
+      if (playlists.isEmpty && toplists.isEmpty && fmSongs.isEmpty) return;
+      _cache[source] = _RemoteCache(
+        playlists: playlists,
+        toplists: toplists,
+        fmSongs: fmSongs,
+        fmMode: fmMode,
+        savedAtMs: savedAtMs,
+      );
+    } catch (e) {
+      debugPrint('[DiscoverSource] disk cache load ${source.name} failed: $e');
+    }
+  }
+
+  Future<void> _persistDiskCache(
+    DiscoverMusicSource source,
+    _RemoteCache entry,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = jsonEncode({
+        'savedAtMs': entry.savedAtMs,
+        'fmMode': entry.fmMode,
+        'playlists': entry.playlists.map((e) => e.toJson()).toList(),
+        'toplists': entry.toplists.map((e) => e.toJson()).toList(),
+        // 漫游列表截断，避免 SharedPreferences 过大
+        'fmSongs': entry.fmSongs.take(40).map((e) => e.toJson()).toList(),
+      });
+      await prefs.setString('$_diskCachePrefix${source.name}', payload);
+    } catch (e) {
+      debugPrint('[DiscoverSource] disk cache save ${source.name} failed: $e');
     }
   }
 }

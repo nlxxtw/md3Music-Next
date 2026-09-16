@@ -221,11 +221,15 @@ class DiscoveryApiClient {
         .map((e) => _songFromMeting(Map<String, dynamic>.from(e), source))
         .where((s) => s.remoteTrackId.isNotEmpty)
         .toList();
-    return enrichRemoteArtwork(songs);
+    // 发现页轻量补封面；逐首 qqovo 会把网易切源卡死
+    return enrichRemoteArtwork(songs, light: true);
   }
 
   /// 把 qqovo/空封面解析成 CDN 直链，供漫游卡 / 锁屏 / 原子随身听 / 通知栏使用。
-  Future<List<Song>> enrichRemoteArtwork(List<Song> songs) async {
+  Future<List<Song>> enrichRemoteArtwork(
+    List<Song> songs, {
+    bool light = false,
+  }) async {
     if (songs.isEmpty) return songs;
     final source = songs.first.source;
     if (source == 'netease') {
@@ -235,13 +239,21 @@ class DiscoveryApiClient {
           .where((id) => id.isNotEmpty)
           .toList();
       if (needIds.isEmpty) return songs;
-      final map = await QqovoResolver().resolveNeteasePicUrls(needIds);
+      Map<String, String> map = const {};
+      try {
+        map = await QqovoResolver()
+            .resolveNeteasePicUrls(needIds)
+            .timeout(const Duration(seconds: 8));
+      } catch (e) {
+        debugPrint('[DiscoveryApi] netease art batch miss: $e');
+      }
       var out = songs.map((s) {
         final pic = map[s.remoteTrackId];
         if (pic == null || pic.isEmpty) return s;
         return s.copyWith(artworkUri: pic);
       }).toList();
-      // 官方 detail 未覆盖的：逐条走 qqovo pic 跟跳转兜底，避免漫游卡全是音符占位
+      if (light) return out;
+      // 官方 detail 未覆盖的：逐条走 qqovo pic（仅点播/详情，不挡发现页）
       final stillNeed = <int>[
         for (var i = 0; i < out.length; i++)
           if (_needsArtworkResolve(out[i].artworkUri) &&
@@ -272,7 +284,9 @@ class DiscoveryApiClient {
       return out;
     }
 
-    // QQ / 汽水：仅对代理/空封面逐条解析（限并发）
+    // QQ / 汽水：发现页不逐首打 pic（light），点播再补。
+    if (light) return songs;
+
     final resolver = QqovoResolver();
     final server = serverForSource(source ?? '');
     if (server.isEmpty) return songs;
@@ -625,7 +639,7 @@ class DiscoveryApiClient {
     );
   }
 
-  /// 网易官方榜单（以歌单 ID 形式暴露，与 QQ 排行榜区一致）。
+  /// 网易官方榜单（发现页只拉封面元数据，不拉整榜曲目）。
   Future<List<DiscoveryToplist>> _neteaseToplists() async {
     const charts = <(String, String)>[
       ('3778678', '热歌榜'),
@@ -635,11 +649,11 @@ class DiscoveryApiClient {
       ('5453912201', '云音乐说唱榜'),
       ('2809513715', '欧美热歌榜'),
     ];
-    final details = await Future.wait(charts.map((c) async {
+    final metas = await Future.wait(charts.map((c) async {
       try {
-        return await _neteaseOfficialPlaylist(c.$1, nameHint: c.$2);
+        return await _neteasePlaylistMeta(c.$1, nameHint: c.$2);
       } catch (_) {
-        return (playlist: null, songs: const <Song>[]);
+        return null;
       }
     }));
     return [
@@ -647,7 +661,7 @@ class DiscoveryApiClient {
         DiscoveryToplist(
           id: charts[i].$1,
           name: charts[i].$2,
-          cover: details[i].playlist?.cover ?? '',
+          cover: metas[i]?.cover ?? '',
           group: '官方榜',
           source: 'netease',
         ),
@@ -663,32 +677,79 @@ class DiscoveryApiClient {
       ('2609222984', '华语流行'),
       ('2801843750', '治愈系'),
     ];
-    final details = await Future.wait(ids.map((c) async {
+    final metas = await Future.wait(ids.map((c) async {
       try {
-        return await _neteaseOfficialPlaylist(c.$1, nameHint: c.$2);
+        return await _neteasePlaylistMeta(c.$1, nameHint: c.$2);
       } catch (_) {
-        return (playlist: null, songs: const <Song>[]);
+        return null;
       }
     }));
     final out = <DiscoveryPlaylist>[];
     for (var i = 0; i < ids.length; i++) {
-      final pl = details[i].playlist;
-      if (pl == null) continue;
-      // 无封面也保留入口，点进去仍可拉歌
+      final pl = metas[i];
       out.add(DiscoveryPlaylist(
         id: ids[i].$1,
         name: ids[i].$2,
-        cover: pl.cover,
-        trackCount: pl.trackCount > 0 ? pl.trackCount : details[i].songs.length,
-        playCount: pl.playCount,
-        creator: pl.creator.isNotEmpty ? pl.creator : '网易云',
+        cover: pl?.cover ?? '',
+        trackCount: pl?.trackCount ?? 0,
+        playCount: pl?.playCount ?? 0,
+        creator: (pl?.creator.isNotEmpty == true) ? pl!.creator : '网易云',
         source: 'netease',
       ));
     }
     return out;
   }
 
-  /// 网易云公开歌单详情（不依赖 qqovo playlist，封面/曲目更稳）。
+  /// 发现页卡片：只取封面/曲目数（n=0），避免一次拉 6×100 首卡死。
+  Future<DiscoveryPlaylist?> _neteasePlaylistMeta(
+    String id, {
+    String? nameHint,
+  }) async {
+    try {
+      final res = await _dio.get(
+        'https://music.163.com/api/v6/playlist/detail',
+        queryParameters: {'id': id, 'n': 0, 's': 0},
+        options: Options(
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Referer': 'https://music.163.com/',
+            'Accept': 'application/json',
+          },
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 12),
+          validateStatus: (code) => code != null && code < 500,
+        ),
+      );
+      final data = res.data;
+      if (data is! Map) return null;
+      final pl = data['playlist'];
+      if (pl is! Map) return null;
+      final cover = _httpsify(
+        '${pl['coverImgUrl'] ?? pl['picUrl'] ?? ''}'.trim(),
+      );
+      final name = '${pl['name'] ?? nameHint ?? '歌单 $id'}'.trim();
+      final creatorMap = pl['creator'];
+      final creator = creatorMap is Map
+          ? '${creatorMap['nickname'] ?? ''}'
+          : '';
+      return DiscoveryPlaylist(
+        id: id,
+        name: name,
+        cover: cover,
+        trackCount: (pl['trackCount'] as num?)?.toInt() ?? 0,
+        playCount: (pl['playCount'] as num?)?.toInt() ?? 0,
+        creator: creator,
+        source: 'netease',
+      );
+    } catch (e) {
+      debugPrint('[DiscoveryApi] netease meta $id failed: $e');
+      return null;
+    }
+  }
+
+  /// 网易云公开歌单详情（点进歌单后再拉曲目）。
   Future<({DiscoveryPlaylist? playlist, List<Song> songs})>
       _neteaseOfficialPlaylist(String id, {String? nameHint}) async {
     try {
@@ -703,6 +764,8 @@ class DiscoveryApiClient {
             'Referer': 'https://music.163.com/',
             'Accept': 'application/json',
           },
+          sendTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 20),
           validateStatus: (code) => code != null && code < 500,
         ),
       );
@@ -912,13 +975,27 @@ class DiscoveryPlaylist {
     return DiscoveryPlaylist(
       id: '${json['id'] ?? ''}',
       name: '${json['name'] ?? ''}',
-      cover: '${json['cover'] ?? ''}',
-      trackCount: (json['track_count'] as num?)?.toInt() ?? 0,
-      playCount: (json['play_count'] as num?)?.toInt() ?? 0,
+      cover: '${json['cover'] ?? json['coverImgUrl'] ?? ''}',
+      trackCount: (json['track_count'] as num?)?.toInt() ??
+          (json['trackCount'] as num?)?.toInt() ??
+          0,
+      playCount: (json['play_count'] as num?)?.toInt() ??
+          (json['playCount'] as num?)?.toInt() ??
+          0,
       creator: '${json['creator'] ?? ''}',
-      source: source,
+      source: '${json['source'] ?? source}',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'cover': cover,
+        'track_count': trackCount,
+        'play_count': playCount,
+        'creator': creator,
+        'source': source,
+      };
 }
 
 class DiscoveryToplist {
@@ -948,6 +1025,14 @@ class DiscoveryToplist {
       source: '${json['source'] ?? source}',
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'cover': cover,
+        'group': group,
+        'source': source,
+      };
 }
 
 Song songFromDiscovery(Map<String, dynamic> json, String source) {
