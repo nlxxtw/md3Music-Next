@@ -1,11 +1,11 @@
 {
   "latestVersion": "13.3.26",
-  "latestBuild": 3030,
+  "latestBuild": 3031,
   "minVersion": "0.0.0",
   "minBuild": 0,
-  "force": true,
+  "force": false,
   "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.26",
   "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.26/app-arm64-v8a-release.apk",
-  "title": "必须更新",
-  "message": "NextMusic v13.3.26：恢复原子歌词包名、修复网易云封面。请点在线安装；装完若提示冲突请先卸载旧包。"
+  "title": "发现新版本",
+  "message": "NextMusic v13.3.26 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
 }
