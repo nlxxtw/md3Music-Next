@@ -2,29 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:m3e_core/m3e_core.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/models/song.dart';
 import '../../providers/discover_source_provider.dart';
-import '../../widgets/song_list_item.dart';
-import '../player/full_player_route.dart';
+import '../../services/discovery_api/discovery_api_client.dart';
+import '../../widgets/discovery_cover_image.dart';
+import 'remote_playlist_page.dart';
 
-/// QQ / 汽水 / 网易云搜索：列表先出，点播再解析直链。
-class RemoteSearchPage extends StatefulWidget {
+/// 发现页 · 搜索歌单（网易 cloudsearch；QQ/汽水在推荐池按名过滤）。
+class RemotePlaylistSearchPage extends StatefulWidget {
   final DiscoverMusicSource source;
 
-  const RemoteSearchPage({super.key, required this.source});
+  const RemotePlaylistSearchPage({super.key, required this.source});
 
   @override
-  State<RemoteSearchPage> createState() => _RemoteSearchPageState();
+  State<RemotePlaylistSearchPage> createState() =>
+      _RemotePlaylistSearchPageState();
 }
 
-class _RemoteSearchPageState extends State<RemoteSearchPage> {
+class _RemotePlaylistSearchPageState extends State<RemotePlaylistSearchPage> {
   final _controller = TextEditingController();
   final _focus = FocusNode();
 
   bool _loading = false;
   String? _error;
   String _query = '';
-  List<Song> _songs = const [];
+  List<DiscoveryPlaylist> _playlists = const [];
 
   String get _apiSource => widget.source.apiSource!;
   String get _label => widget.source.label;
@@ -45,21 +46,20 @@ class _RemoteSearchPageState extends State<RemoteSearchPage> {
       _error = null;
     });
     try {
-      final songs = await context.read<DiscoverSourceProvider>().client.searchSongs(
-            source: _apiSource,
-            keyword: q,
-            limit: 30,
-          );
+      final list = await context
+          .read<DiscoverSourceProvider>()
+          .client
+          .searchPlaylists(source: _apiSource, keyword: q);
       if (!mounted) return;
       setState(() {
-        _songs = songs;
+        _playlists = list;
         _loading = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = e.toString();
-        _songs = const [];
+        _playlists = const [];
         _loading = false;
       });
     }
@@ -77,7 +77,7 @@ class _RemoteSearchPageState extends State<RemoteSearchPage> {
           autofocus: true,
           textInputAction: TextInputAction.search,
           decoration: InputDecoration(
-            hintText: '搜索$_label歌曲',
+            hintText: '搜索$_label歌单',
             border: InputBorder.none,
             hintStyle: TextStyle(color: cs.onSurfaceVariant),
           ),
@@ -119,26 +119,62 @@ class _RemoteSearchPageState extends State<RemoteSearchPage> {
     if (_query.isEmpty) {
       return Center(
         child: Text(
-          '输入关键词搜索',
+          widget.source == DiscoverMusicSource.netease
+              ? '输入关键词搜索歌单'
+              : '输入关键词，在推荐歌单中筛选',
           style: TextStyle(color: cs.onSurfaceVariant),
         ),
       );
     }
-    if (_songs.isEmpty) {
+    if (_playlists.isEmpty) {
       return Center(
         child: Text('无结果', style: TextStyle(color: cs.onSurfaceVariant)),
       );
     }
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 100),
-      itemCount: _songs.length,
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+      itemCount: _playlists.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, i) {
-        return SongListItem(
-          song: _songs[i],
+        final p = _playlists[i];
+        return ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: p.cover.isEmpty
+                  ? ColoredBox(
+                      color: cs.surfaceContainerHighest,
+                      child: const Icon(Icons.queue_music),
+                    )
+                  : DiscoveryCoverImage(
+                      url: p.cover,
+                      memCacheWidth: 168,
+                      error: ColoredBox(
+                        color: cs.surfaceContainerHighest,
+                        child: const Icon(Icons.queue_music),
+                      ),
+                    ),
+            ),
+          ),
+          title: Text(p.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+          subtitle: Text(
+            [
+              if (p.creator.isNotEmpty) p.creator,
+              if (p.trackCount > 0) '${p.trackCount} 首',
+            ].join(' · '),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           onTap: () {
-            playAndOpenFullPlayer(context, _songs, i);
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => RemotePlaylistPage(playlist: p),
+              ),
+            );
           },
-          onMoreTap: () {},
         );
       },
     );

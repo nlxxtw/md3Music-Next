@@ -647,15 +647,18 @@ class AudioService {
       _vnPeakDb = null;
     }
     // 带 artUri 的 MediaItem：SystemUI / 原子随身听 / 媒体3 通知从 artUri 拉封面。
-    // 仅 setUrl 无 tag 时，后续 bitmap 注入也常不触发 MediaSession 同步。
+    // 网易/汽水 CDN 无 Referer 会 403，首帧勿写入（等原生 CoverHttp → content://）。
     var art = artUri?.trim();
     if (art != null && art.startsWith('http://')) {
       art = 'https://${art.substring(7)}';
     }
+    if (art != null && _isRefererProtectedCoverUrl(art)) {
+      art = null;
+    }
     final artUriParsed =
         (art != null && art.isNotEmpty) ? Uri.tryParse(art) : null;
     final useTaggedSource =
-        id != null || title != null || artUriParsed != null;
+        id != null || title != null || artUri != null;
     if (useTaggedSource) {
       await _activePlayer.setAudioSource(
         AudioSource.uri(
@@ -1064,6 +1067,10 @@ UriAudioSource createAudioSource({
   Uri? artUri,
   Map<String, String>? headers,
 }) {
+  final artStr = artUri?.toString();
+  final safeArt = (artStr != null && _isRefererProtectedCoverUrl(artStr))
+      ? null
+      : artStr;
   return AudioSource.uri(
     Uri.parse(url),
     headers: headers ?? _discoveryStreamHeaders(url),
@@ -1072,9 +1079,25 @@ UriAudioSource createAudioSource({
       'title': title,
       'artist': artist,
       'album': album,
-      'artUri': artUri?.toString(),
+      'artUri': safeArt,
     },
   );
+}
+
+/// 原子/锁屏无 Referer：这些封面 CDN 不能作为首帧 ALBUM_ART_URI。
+bool _isRefererProtectedCoverUrl(String url) {
+  final u = url.toLowerCase();
+  return u.contains('music.126.net') ||
+      u.contains('126.net') ||
+      u.contains('163.com') ||
+      u.contains('douyin') ||
+      u.contains('byteimg') ||
+      u.contains('bytevod') ||
+      u.contains('qishui') ||
+      u.contains('luna') ||
+      u.contains('tos-cn') ||
+      u.contains('snssdk') ||
+      u.contains('pstatp');
 }
 
 /// QQ / 汽水直链播放头（按 CDN 域名推断）。

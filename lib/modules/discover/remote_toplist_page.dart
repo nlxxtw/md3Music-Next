@@ -4,10 +4,10 @@ import 'package:provider/provider.dart';
 import '../../data/models/song.dart';
 import '../../providers/discover_source_provider.dart';
 import '../../providers/favorites_provider.dart';
-import '../../providers/player_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
 import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/scroll_aware_app_bar.dart';
+import '../player/full_player_route.dart';
 
 class RemoteToplistPage extends StatefulWidget {
   final DiscoveryToplist toplist;
@@ -138,7 +138,7 @@ class _RemoteToplistPageState extends State<RemoteToplistPage> {
                         },
                       ),
                       onTap: () {
-                        context.read<PlayerProvider>().playOnlinePlaylist(_songs, i);
+                        playAndOpenFullPlayer(context, _songs, i);
                       },
                     );
                   },

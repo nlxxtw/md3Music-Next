@@ -30,6 +30,7 @@ import 'mv_player_page.dart';
 import 'song_info_page.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/kugou_provider.dart';
+import '../../widgets/quality_badge_style.dart';
 import '../../providers/local_favorites_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/theme_provider.dart';
@@ -66,13 +67,6 @@ void _preloadArtwork(String? url) {
     CachedNetworkImageProvider(url).resolve(const ImageConfiguration());
   }
 }
-
-const List<AudioQuality> _audioQualities = [
-  AudioQuality.standard,
-  AudioQuality.high,
-  AudioQuality.flac,
-  AudioQuality.hires,
-];
 
 /// 定时关闭预定义档位（分钟）。
 const List<Duration> _sleepTimerPresets = [
@@ -1758,19 +1752,34 @@ class _FullPlayerState extends State<FullPlayer>
   /// 本地歌曲：只读显示码率推断的音质，禁用点击切换。
   /// 在线歌曲：点击复用 _showQualityDialog。
   Widget _buildQualityPill(PlayerProvider playerProvider) {
-    final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final song = playerProvider.currentSong;
     final isLocal = song is Song && !song.isOnline;
+    final label = playerProvider.currentQualityLabel;
+    final vipStyle = QualityBadgeStyle.of(
+      label,
+      brightness: Theme.of(context).brightness,
+    );
+    final isVip = _isVipQualityLabel(label);
     return Material(
-      color: colorScheme.primaryContainer,
+      color: isVip
+          ? vipStyle.background
+          : colorScheme.primaryContainer,
       shape: const StadiumBorder(),
       child: InkWell(
         // 本地歌曲屏蔽音质选择
         onTap: isLocal ? null : () => _showQualityDialog(playerProvider),
         onLongPress: () => _showVolumeDialog(playerProvider),
         customBorder: const StadiumBorder(),
-        child: Padding(
+        child: Container(
+          decoration: isVip
+              ? ShapeDecoration(
+                  shape: StadiumBorder(
+                    side: BorderSide(color: vipStyle.border, width: 1.2),
+                  ),
+                )
+              : null,
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1778,15 +1787,15 @@ class _FullPlayerState extends State<FullPlayer>
               Icon(
                 Icons.music_note,
                 size: 14,
-                color: colorScheme.onPrimaryContainer,
+                color: isVip ? vipStyle.foreground : colorScheme.onPrimaryContainer,
               ),
               const SizedBox(width: 4),
               Text(
-                // 本地歌曲显示基于码率推断的音质标签
-                playerProvider.currentQualityLabel,
+                label,
                 style: textTheme.labelMedium?.copyWith(
-                  color: colorScheme.onPrimaryContainer,
-                  fontWeight: FontWeight.w600,
+                  color: isVip ? vipStyle.foreground : colorScheme.onPrimaryContainer,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
@@ -1794,6 +1803,19 @@ class _FullPlayerState extends State<FullPlayer>
         ),
       ),
     );
+  }
+
+  bool _isVipQualityLabel(String label) {
+    final b = label.toLowerCase();
+    return b.contains('全景') ||
+        b.contains('母带') ||
+        b.contains('环绕') ||
+        b.contains('杜比') ||
+        b.contains('蝰蛇') ||
+        b.contains('臻音') ||
+        b.contains('录音室') ||
+        b.contains('hi-res') ||
+        b.contains('hires');
   }
 
   Widget _buildCrossfadeArtworkWrapper(
@@ -2489,59 +2511,18 @@ class _FullPlayerState extends State<FullPlayer>
 
   /// 音质简短文本：去掉码率/格式后缀；远程源用平台习惯称呼。
   String _qualityShortLabel(AudioQuality quality, {Song? song}) {
-    switch (song?.source) {
-      case 'netease':
-        switch (quality) {
-          case AudioQuality.standard:
-            return '标准';
-          case AudioQuality.high:
-            return '极高';
-          case AudioQuality.flac:
-            return '无损';
-          case AudioQuality.hires:
-            return '高清臻音';
-        }
-      case 'qq':
-        switch (quality) {
-          case AudioQuality.standard:
-            return '标准品质';
-          case AudioQuality.high:
-            return 'HQ高品质';
-          case AudioQuality.flac:
-          case AudioQuality.hires:
-            return 'SQ无损品质';
-        }
-      case 'soda':
-        switch (quality) {
-          case AudioQuality.standard:
-            return '标准';
-          case AudioQuality.high:
-          case AudioQuality.flac:
-          case AudioQuality.hires:
-            return '极高';
-        }
-      default:
-        switch (quality) {
-          case AudioQuality.standard:
-            return '标准';
-          case AudioQuality.high:
-            return '高品质';
-          case AudioQuality.flac:
-            return '无损';
-          case AudioQuality.hires:
-            return 'Hi-Res';
-        }
-    }
+    return quality.shortLabelForSource(song?.source);
   }
 
   void _showQualityDialog(PlayerProvider playerProvider) {
     final song = playerProvider.currentSong;
+    final qualities = AudioQuality.optionsForSource(song?.source);
     showDialog(
       context: context,
       builder: (context) {
         return SimpleDialog(
           title: const Center(child: Text('音质选择')),
-          children: _audioQualities.map((quality) {
+          children: qualities.map((quality) {
             return SimpleDialogOption(
               onPressed: () {
                 playerProvider.setAudioQuality(quality);
@@ -2551,10 +2532,10 @@ class _FullPlayerState extends State<FullPlayer>
                 _qualityShortLabel(quality, song: song),
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: playerProvider.audioQuality == quality
+                  color: playerProvider.highlightedAudioQuality == quality
                       ? Theme.of(context).colorScheme.primary
                       : null,
-                  fontWeight: playerProvider.audioQuality == quality
+                  fontWeight: playerProvider.highlightedAudioQuality == quality
                       ? FontWeight.bold
                       : null,
                 ),

@@ -49,11 +49,143 @@ enum AudioQuality {
   standard('128', '标准音质'),
   high('320', '高音质'),
   flac('flac', '无损音质'),
-  hires('high', 'Hi-Res');
+  hires('high', 'Hi-Res'),
+  /// QQ 臻品全景声 · 超会
+  atmos('atmos', '臻品全景声'),
+  /// QQ 臻品母带 · 超会
+  master('master', '臻品母带'),
+  /// 网易 沉浸环绕声 · SVIP
+  sky('sky', '沉浸环绕声'),
+  /// 网易 超清母带 / 高清臻音 · SVIP
+  jymaster('jymaster', '超清母带'),
+  /// 网易 杜比全景声 · SVIP
+  dolby('dolby', '杜比全景声'),
+  /// 汽水 蝰蛇 HiFi · SVIP
+  viperHifi('viper_hifi', '蝰蛇HiFi');
 
   const AudioQuality(this.value, this.label);
   final String value;
   final String label;
+
+  /// 酷狗 / 本地引擎可识别的 quality（VIP 远程档回落为 Hi-Res）。
+  String get engineValue => switch (this) {
+        standard => '128',
+        high => '320',
+        flac => 'flac',
+        hires ||
+        atmos ||
+        master ||
+        sky ||
+        jymaster ||
+        dolby ||
+        viperHifi =>
+          'high',
+      };
+
+  /// 播放页音质菜单：按音源列出可区分档位（含顶级 VIP，接口有则命中）。
+  static List<AudioQuality> optionsForSource(String? source) {
+    switch (source) {
+      case 'qq':
+        return const [standard, high, flac, master, atmos];
+      case 'soda':
+        return const [standard, high, flac, hires, viperHifi];
+      case 'netease':
+        return const [standard, high, flac, hires, dolby, sky, jymaster];
+      default:
+        return const [standard, high, flac, hires];
+    }
+  }
+
+  /// 远程源习惯称呼（与下载菜单对齐；每档唯一）。
+  String shortLabelForSource(String? source) {
+    switch (source) {
+      case 'netease':
+        return switch (this) {
+          standard => '标准',
+          high => '极高',
+          flac => '无损',
+          hires => 'Hi-Res',
+          dolby => '杜比全景声',
+          sky => '沉浸环绕声',
+          jymaster => '超清母带',
+          atmos || master || viperHifi => label,
+        };
+      case 'qq':
+        return switch (this) {
+          standard => '标准品质',
+          high => 'HQ高品质',
+          flac => 'SQ无损品质',
+          master => '臻品母带',
+          atmos => '臻品全景声',
+          hires || sky || jymaster || dolby || viperHifi => label,
+        };
+      case 'soda':
+        return switch (this) {
+          standard => '标准',
+          high => '极高',
+          flac => '无损',
+          hires => 'Hi-Res',
+          viperHifi => '蝰蛇HiFi',
+          atmos || master || sky || jymaster || dolby => label,
+        };
+      default:
+        return switch (this) {
+          standard => '标准',
+          high => '高品质',
+          flac => '无损',
+          hires => 'Hi-Res',
+          atmos || master || sky || jymaster || dolby || viperHifi => label,
+        };
+    }
+  }
+
+  /// 把 qqovo 返回的中文/英文 quality 映射回枚举（用于角标高亮「跳到对应档」）。
+  static AudioQuality? matchRemote(String? source, String? raw) {
+    final q = (raw ?? '').trim().toLowerCase();
+    if (q.isEmpty) return null;
+    bool has(String s) => q.contains(s.toLowerCase());
+
+    switch (source) {
+      case 'qq':
+        if (has('全景') || q == 'atmos') return atmos;
+        if (has('母带') || q == 'master') return master;
+        if (has('sq') || q == 'flac' || q == 'ogg' || has('无损')) return flac;
+        if (has('hq') || q == '320' || has('高品')) return high;
+        if (has('标准') || q == '128' || q == 'standard') return standard;
+        break;
+      case 'netease':
+        if (has('环绕') || q == 'sky') return sky;
+        if (has('杜比') || q == 'dolby') return dolby;
+        if (has('母带') || q == 'jymaster' || has('超清')) return jymaster;
+        if (has('臻音') || q == 'jyeffect') return jymaster;
+        if (q == 'hires' || has('hi-res') || has('hires')) return hires;
+        if (q == 'lossless' || q == 'flac' || has('无损')) return flac;
+        if (q == 'exhigh' || q == '320' || q == 'higher' || has('极高')) {
+          return high;
+        }
+        if (q == 'standard' || q == '128' || has('标准')) return standard;
+        break;
+      case 'soda':
+        if (has('viper_hifi') || has('蝰蛇hifi') || has('蝰蛇 hifi')) {
+          return viperHifi;
+        }
+        if (has('viper') || has('蝰蛇')) return viperHifi;
+        if (q == 'hires' || has('hi-res') || has('hires') || has('studio')) {
+          return hires;
+        }
+        if (q == 'lossless' || q == 'flac' || has('无损')) return flac;
+        if (q == 'exhigh' || q == '320' || q == 'higher' || has('极高')) {
+          return high;
+        }
+        if (q == 'standard' || q == '128' || has('标准')) return standard;
+        break;
+    }
+    // 通用 key
+    for (final e in values) {
+      if (e.value == q) return e;
+    }
+    return null;
+  }
 }
 
 /// 旧版本 SharedPreferences 中存储的音质值 → 当前 AudioQuality.value 映射。
@@ -300,6 +432,20 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       return KugouQuality.labelOf(_actualPlayingQuality!);
     }
     return _audioQuality.label;
+  }
+
+  /// 音质菜单高亮：优先按接口实际返回档，能出顶级就跳到对应项。
+  AudioQuality get highlightedAudioQuality {
+    final song = _currentSong;
+    final actual = _actualPlayingQuality ?? song?.quality;
+    if (song != null && actual != null && song.isRemoteDiscovery) {
+      final matched = AudioQuality.matchRemote(song.source, actual);
+      if (matched != null &&
+          AudioQuality.optionsForSource(song.source).contains(matched)) {
+        return matched;
+      }
+    }
+    return _audioQuality;
   }
 
   StreamSubscription<Duration>? _positionSubscription;
@@ -1112,7 +1258,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final result = await KugouApiClient().getSongUrlWithFallback(
         song.id,
-        quality: _audioQuality.value,
+        quality: _audioQuality.engineValue,
         albumId: song.albumId,
         albumAudioId: song.albumAudioId,
       );
@@ -1174,7 +1320,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       } else {
         final result = await KugouApiClient().getSongUrlWithFallback(
           song.id,
-          quality: _audioQuality.value,
+          quality: _audioQuality.engineValue,
           albumId: song.albumId,
           albumAudioId: song.albumAudioId,
         );
@@ -1499,7 +1645,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       if (song.isOnline && (song.url == null || song.url!.isEmpty)) {
         final result = await KugouApiClient().getSongUrlWithFallback(
           song.id,
-          quality: _audioQuality.value,
+          quality: _audioQuality.engineValue,
           albumId: song.albumId,
           albumAudioId: song.albumAudioId,
         );
@@ -1751,7 +1897,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       final result = await apiClient.getSongUrlWithFallback(
         song.id,
-        quality: _audioQuality.value,
+        quality: _audioQuality.engineValue,
         albumId: song.albumId,
         albumAudioId: song.albumAudioId,
       );
@@ -1829,7 +1975,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         final apiClient = KugouApiClient();
         final result = await apiClient.getSongUrlWithFallback(
           _currentSong!.id,
-          quality: _audioQuality.value,
+          quality: _audioQuality.engineValue,
           albumId: _currentSong!.albumId,
           albumAudioId: _currentSong!.albumAudioId,
         );
@@ -1949,9 +2095,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         _updateNotification();
         notifyListeners();
 
-        final url = await _resolveRemoteDiscoveryUrl(current);
+        final hit = await _resolveRemoteDiscoveryHit(current);
+        final url = hit?.url;
         if (url != null && url.isNotEmpty) {
-          final qTag = _remoteQualityTag(current);
+          final qTag = hit?.quality?.trim().isNotEmpty == true
+              ? hit!.quality!.trim()
+              : _remoteQualityTag(current);
           _actualPlayingQuality = qTag;
           final resolvedSong =
               current.copyWith(url: url, quality: qTag);
@@ -1982,7 +2131,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         final apiClient = KugouApiClient();
         final result = await apiClient.getSongUrlWithFallback(
           _currentSong!.id,
-          quality: _audioQuality.value,
+          quality: _audioQuality.engineValue,
           albumId: _currentSong!.albumId,
           albumAudioId: _currentSong!.albumAudioId,
         );
@@ -2028,11 +2177,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _fetchClimaxData();
   }
 
-  Future<String?> _resolveRemoteDiscoveryUrl(Song song) async {
+  Future<DiscoveryPlayUrl?> _resolveRemoteDiscoveryHit(Song song) async {
     final source = song.source;
     if (source == null) return null;
     try {
-      return await DiscoveryApiClient().resolvePlayUrl(
+      return await DiscoveryApiClient().resolvePlayUrlHit(
         source: source,
         id: song.remoteTrackId,
         quality: _remoteQualityTag(song),
@@ -2042,23 +2191,39 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  Future<String?> _resolveRemoteDiscoveryUrl(Song song) async {
+    return (await _resolveRemoteDiscoveryHit(song))?.url;
+  }
+
   /// 远程源写入/请求用的音质码（与 qqovo quality 对齐）。
+  /// 标准以外一律从该源顶级档起试，接口能出就落到对应档。
   String _remoteQualityTag(Song song) {
     final q = _audioQuality;
     switch (song.source) {
       case 'soda':
-        if (q == AudioQuality.flac || q == AudioQuality.hires) return 'lossless';
+        if (q == AudioQuality.standard) return 'standard';
         if (q == AudioQuality.high) return 'exhigh';
-        return 'standard';
-      case 'netease':
-        if (q == AudioQuality.hires) return 'jymaster';
         if (q == AudioQuality.flac) return 'lossless';
+        // Hi-Res / 蝰蛇 / 其它 VIP：从蝰蛇链顶向下试
+        return 'viper_hifi';
+      case 'netease':
+        if (q == AudioQuality.standard) return 'standard';
         if (q == AudioQuality.high) return 'exhigh';
-        return 'standard';
+        if (q == AudioQuality.flac) return 'lossless';
+        if (q == AudioQuality.hires) return 'hires';
+        if (q == AudioQuality.dolby) return 'dolby';
+        // sky / jymaster / 其它 VIP：从环绕链顶向下试
+        return 'sky';
       case 'qq':
-        return q.value;
+        if (q == AudioQuality.standard) return '128';
+        if (q == AudioQuality.high) return '320';
+        if (q == AudioQuality.flac) return 'flac';
+        if (q == AudioQuality.master) return 'master';
+        if (q == AudioQuality.atmos) return 'atmos';
+        // Hi-Res / 其它 VIP → 从全景声起向下试
+        return 'atmos';
       default:
-        return q.value;
+        return q.engineValue;
     }
   }
 
@@ -2076,7 +2241,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       KugouApiClient()
           .getSongUrlWithFallback(
             song.id,
-            quality: _audioQuality.value,
+            quality: _audioQuality.engineValue,
             albumId: song.albumId,
             albumAudioId: song.albumAudioId,
           )
@@ -2169,7 +2334,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final result = await apiClient.getSongUrlWithFallback(
         song.id,
-        quality: _audioQuality.value,
+        quality: _audioQuality.engineValue,
         albumId: song.albumId,
         albumAudioId: song.albumAudioId,
       );
@@ -2474,9 +2639,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
               _updateNotification();
               notifyListeners();
             }
-            final url = await _resolveRemoteDiscoveryUrl(_currentSong!);
+            final hit = await _resolveRemoteDiscoveryHit(_currentSong!);
+            final url = hit?.url;
             if (url != null && url.isNotEmpty) {
-              final qTag = _remoteQualityTag(_currentSong!);
+              final qTag = hit?.quality?.trim().isNotEmpty == true
+                  ? hit!.quality!.trim()
+                  : _remoteQualityTag(_currentSong!);
               _actualPlayingQuality = qTag;
               _prefetchedUrlQuality[_currentSong!.id] = qTag;
               final resolvedSong =
@@ -2513,7 +2681,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         try {
           final result = await KugouApiClient().getSongUrlWithFallback(
             _currentSong!.id,
-            quality: _audioQuality.value,
+            quality: _audioQuality.engineValue,
             albumId: _currentSong!.albumId,
             albumAudioId: _currentSong!.albumAudioId,
           );
@@ -3008,7 +3176,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         try {
           final result = await KugouApiClient().getSongUrlWithFallback(
             _currentSong!.id,
-            quality: _audioQuality.value,
+            quality: _audioQuality.engineValue,
             albumId: _currentSong!.albumId,
             albumAudioId: _currentSong!.albumAudioId,
           );
@@ -3359,13 +3527,16 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       String actualQuality = _audioQuality.value;
 
       if (song.isRemoteDiscovery) {
-        playUrl = await _resolveRemoteDiscoveryUrl(song);
-        actualQuality = _remoteQualityTag(song);
+        final hit = await _resolveRemoteDiscoveryHit(song);
+        playUrl = hit?.url;
+        actualQuality = (hit?.quality?.trim().isNotEmpty == true)
+            ? hit!.quality!.trim()
+            : _remoteQualityTag(song);
       } else {
         final apiClient = KugouApiClient();
         final result = await apiClient.getSongUrlWithFallback(
           song.id,
-          quality: _audioQuality.value,
+          quality: _audioQuality.engineValue,
           albumId: song.albumId,
           albumAudioId: song.albumAudioId,
         );

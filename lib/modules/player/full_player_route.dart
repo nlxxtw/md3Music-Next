@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/motion_constants.dart';
+import '../../data/models/song.dart';
+import '../../providers/player_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../utils/landscape_immersive.dart';
 import 'full_player.dart';
@@ -65,6 +67,17 @@ void openFullPlayer(BuildContext context) {
     return;
   }
   navigator.push(fullPlayerRoute(context));
+}
+
+/// 点歌：立刻进全屏歌词页（不等待 URL 解析），给用户即时反馈。
+void playAndOpenFullPlayer(
+  BuildContext context,
+  List<Song> songs,
+  int index,
+) {
+  // ignore: discarded_futures
+  context.read<PlayerProvider>().playOnlinePlaylist(songs, index);
+  openFullPlayer(context);
 }
 
 /// 拖拽展开进行中标志（控制页面内跟手覆盖层显示）。

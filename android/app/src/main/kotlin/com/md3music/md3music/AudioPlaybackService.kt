@@ -1767,22 +1767,16 @@ class AudioPlaybackService : Service() {
     }
 
     /// 将已缓存封面暴露为 content://，供原子随身听 / 锁屏 Glide 读取。
-    /// 网易 CDN 无 Referer 会 403，不能把 https://p*.music.126.net 直接塞进 ALBUM_ART_URI。
+    /// 原子端会剥掉 bitmap，只拉 ALBUM_ART_URI；网易/汽水 CDN 无 Referer 常 403，
+    /// **禁止**把原始 https CDN 塞进 session（只能 content:// / 已有本地 file）。
     private fun coverUriForSession(artUrl: String?): String? {
         if (artUrl.isNullOrEmpty()) return null
+        if (artUrl.startsWith("content://")) return artUrl
+        if (artUrl.startsWith("file://")) return artUrl
         val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
         val file = coverCacheFile(key) ?: coverCacheFile(artUrl)
         if (file == null || !file.exists() || file.length() < 32) {
-            // 无本地缓存时，非网易 CDN 仍可试 http（QQ/汽水通常无需 Referer）
-            if (key.contains("music.126.net") || key.contains("126.net")) {
-                return null
-            }
-            return if (key.startsWith("http://") || key.startsWith("https://")
-                || key.startsWith("content://") || key.startsWith("file://")) {
-                key
-            } else {
-                null
-            }
+            return null
         }
         return try {
             val uri = androidx.core.content.FileProvider.getUriForFile(
@@ -1796,7 +1790,9 @@ class AudioPlaybackService : Service() {
                 "com.android.systemui",
                 "com.vivo.upslide",
                 "com.vivo.musicwidgetmix",
+                "com.vivo.originui",
                 "com.bbk.launcher2",
+                "com.vivo.launcher",
             )) {
                 try {
                     grantUriPermission(pkg, uri, flags)
@@ -1997,6 +1993,11 @@ class AudioPlaybackService : Service() {
         originalArtist = artist
         val previousArtUrl = lastArtUrl
         lastArtUrl = artUrl
+        // 切歌时清封面失败冷却，避免上一首超时后新歌被 60s 跳过下载
+        if (previousArtUrl != artUrl && !artUrl.isNullOrEmpty()) {
+            CoverHttp.normalizeUrl(artUrl)?.let { coverFailedUntil.remove(it) }
+            coverFailedUntil.remove(artUrl)
+        }
         lastIsPlaying = isPlaying
         // 同步「正在播放」状态，供锁屏歌词广播（ACTION_SCREEN_OFF）判断
         isNowPlaying = isPlaying
@@ -2068,8 +2069,6 @@ class AudioPlaybackService : Service() {
                 Log.d(TAG, "封面未变，跳过重下 effectiveArtUrl=$effectiveArtUrl")
                 // 仍用本地 content:// 再注入一次：原子端剥 bitmap 后若还握着会 403 的网易 http URI，封面会一直是音符。
                 val sessionArtUri = coverUriForSession(effectiveArtUrl)
-                    ?: CoverHttp.normalizeUrl(effectiveArtUrl)
-                    ?: effectiveArtUrl
                 AudioPlayer.updateActiveSessionMetadata(
                     requestMediaId,
                     requestGeneration,
@@ -2116,11 +2115,9 @@ class AudioPlaybackService : Service() {
                         // 封面同步注入 just_audio 的媒体3 会话（该会话无封面，播放中会被 SystemUI
                         // 提为控制中心顶层）。用官方 replaceMediaItem 同 uri 替换当前 MediaItem，
                         // 只更新 metadata 不打断播放，保证控制中心/媒体3通知栏选中媒体3 会话时也有封面。
-                        // 原子端会剥掉 bitmap，只消费 ALBUM_ART_URI：优先下发本地 content://
-                        // （CoverHttp 已带 Referer 下好），避免网易 CDN 被原子 Glide 无 Referer 拉成 403。
+                        // 原子端会剥掉 bitmap，只消费 ALBUM_ART_URI：只下发本地 content://
+                        // （CoverHttp 已带 Referer 下好）。禁止回退到原始 CDN https。
                         val sessionArtUri = coverUriForSession(effectiveArtUrl)
-                            ?: CoverHttp.normalizeUrl(effectiveArtUrl)
-                            ?: effectiveArtUrl
                         AudioPlayer.updateActiveSessionMetadata(
                             requestMediaId,
                             requestGeneration,

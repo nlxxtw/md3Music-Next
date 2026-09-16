@@ -27,18 +27,25 @@ class SongDownloadService {
     switch (song.source) {
       case 'qq':
         return const [
+          (value: 'atmos', label: '臻品全景声'),
+          (value: 'master', label: '臻品母带'),
           (value: 'flac', label: 'SQ 无损'),
           (value: '320', label: 'HQ 高品质'),
           (value: '128', label: '标准'),
         ];
       case 'soda':
         return const [
+          (value: 'viper_hifi', label: '蝰蛇HiFi'),
+          (value: 'hires', label: 'Hi-Res'),
+          (value: 'lossless', label: '无损'),
           (value: 'exhigh', label: '极高'),
           (value: 'standard', label: '标准'),
         ];
       case 'netease':
         return const [
-          (value: 'jymaster', label: '高清臻音'),
+          (value: 'sky', label: '沉浸环绕声'),
+          (value: 'jymaster', label: '超清母带'),
+          (value: 'dolby', label: '杜比全景声'),
           (value: 'hires', label: 'Hi-Res'),
           (value: 'lossless', label: '无损'),
           (value: 'exhigh', label: '极高'),

@@ -11,6 +11,7 @@ import '../providers/local_favorites_provider.dart';
 import '../providers/player_provider.dart';
 import '../services/discovery_api/song_download_service.dart';
 import 'playing_spectrum_indicator.dart';
+import 'quality_badge_style.dart';
 import 'smart_artwork_image.dart';
 
 class SongListItem extends StatelessWidget {
@@ -171,27 +172,38 @@ class SongListItem extends StatelessWidget {
                       ),
                       if (song.qualityBadge != null) ...[
                         const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: colorScheme.primary.withValues(alpha: 0.7),
-                              width: 1,
-                            ),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            song.qualityBadge!,
-                            style: textTheme.labelSmall?.copyWith(
-                              color: colorScheme.primary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              height: 1.1,
-                            ),
-                          ),
+                        Builder(
+                          builder: (context) {
+                            final badge = song.qualityBadge!;
+                            final style = QualityBadgeStyle.of(
+                              badge,
+                              brightness: Theme.of(context).brightness,
+                            );
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: style.background,
+                                border: Border.all(
+                                  color: style.border,
+                                  width: 1.1,
+                                ),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text(
+                                badge,
+                                style: textTheme.labelSmall?.copyWith(
+                                  color: style.foreground,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.35,
+                                  height: 1.15,
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ],
                     ],

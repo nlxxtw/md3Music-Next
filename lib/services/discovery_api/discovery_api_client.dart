@@ -63,6 +63,85 @@ class DiscoveryApiClient {
         .toList();
   }
 
+  /// 搜索歌单：网易走官方 cloudsearch；QQ/汽水在推荐池里按名过滤并尽量补拉。
+  Future<List<DiscoveryPlaylist>> searchPlaylists({
+    required String source,
+    required String keyword,
+    int limit = 30,
+  }) async {
+    final q = keyword.trim();
+    if (q.isEmpty) return const [];
+    if (source == 'netease') {
+      return _searchNeteasePlaylists(q, limit: limit);
+    }
+    final recommend = await getRecommend(source);
+    final lower = q.toLowerCase();
+    final hit = recommend
+        .where((p) => p.name.toLowerCase().contains(lower))
+        .take(limit)
+        .toList();
+    if (hit.isNotEmpty) return hit;
+    // 推荐池没命中时再试一次强制刷新后的过滤（汽水/QQ 推荐会变）
+    try {
+      final again = await getRecommend(source);
+      return again
+          .where((p) => p.name.toLowerCase().contains(lower))
+          .take(limit)
+          .toList();
+    } catch (_) {
+      return hit;
+    }
+  }
+
+  Future<List<DiscoveryPlaylist>> _searchNeteasePlaylists(
+    String keyword, {
+    int limit = 30,
+  }) async {
+    try {
+      final resp = await _dio.get(
+        'https://music.163.com/api/cloudsearch/pc',
+        queryParameters: {
+          's': keyword,
+          'type': 1000,
+          'limit': limit,
+          'offset': 0,
+        },
+        options: Options(
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 '
+                    '(KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'Referer': 'https://music.163.com/',
+          },
+          validateStatus: (c) => c != null && c < 500,
+        ),
+      );
+      final result = resp.data is Map ? resp.data['result'] : null;
+      final list = result is Map ? (result['playlists'] as List?) : null;
+      if (list == null) return const [];
+      return list.whereType<Map>().map((raw) {
+        final m = Map<String, dynamic>.from(raw);
+        final cover = _httpsify(
+          '${m['coverImgUrl'] ?? m['picUrl'] ?? m['cover'] ?? ''}',
+        );
+        return DiscoveryPlaylist(
+          id: '${m['id'] ?? ''}',
+          name: '${m['name'] ?? ''}',
+          cover: cover,
+          trackCount: (m['trackCount'] as num?)?.toInt() ?? 0,
+          playCount: (m['playCount'] as num?)?.toInt() ?? 0,
+          creator: m['creator'] is Map
+              ? '${(m['creator'] as Map)['nickname'] ?? ''}'
+              : '${m['creator'] ?? ''}',
+          source: 'netease',
+        );
+      }).where((p) => p.id.isNotEmpty).toList();
+    } catch (e) {
+      debugPrint('[DiscoveryApi] netease playlist search failed: $e');
+      return const [];
+    }
+  }
+
   Future<List<DiscoveryPlaylist>> getRecommend(String source) async {
     if (source == 'netease') return _neteasePlaylists();
     final res = await _dio.get('$baseUrl/api/v1/recommend', queryParameters: {
@@ -346,28 +425,42 @@ class DiscoveryApiClient {
     required String id,
     String quality = '320',
   }) async {
+    return (await resolvePlayUrlHit(
+      source: source,
+      id: id,
+      quality: quality,
+    ))
+        ?.url;
+  }
+
+  /// 同 [resolvePlayUrl]，额外带回实际音质名（qqovo `quality` 字段）。
+  Future<DiscoveryPlayUrl?> resolvePlayUrlHit({
+    required String source,
+    required String id,
+    String quality = '320',
+  }) async {
     String? url;
     String? sodaAuth;
-    if (source == 'qq') {
-      url = await QqovoResolver().resolve(
-        server: 'tencent',
-        id: id,
-        preference: quality,
-      );
-    } else if (source == 'soda') {
+    String? actualQuality;
+
+    Future<void> takeQqovo(String server) async {
       final hit = await QqovoResolver().resolveHit(
-        server: 'qishui',
+        server: server,
         id: id,
         preference: quality,
       );
-      url = hit?.url;
-      sodaAuth = hit?.auth;
+      if (hit == null) return;
+      url = hit.url;
+      sodaAuth = hit.auth;
+      actualQuality = hit.quality ?? hit.requestedQuality ?? quality;
+    }
+
+    if (source == 'qq') {
+      await takeQqovo('tencent');
+    } else if (source == 'soda') {
+      await takeQqovo('qishui');
     } else if (source == 'netease') {
-      url = await QqovoResolver().resolve(
-        server: 'netease',
-        id: id,
-        preference: quality,
-      );
+      await takeQqovo('netease');
     }
 
     // qqovo 失败时，汽水/网易也回退云端 resolve（与 QQ 一致）
@@ -398,6 +491,9 @@ class DiscoveryApiClient {
           }
           final remoteAuth = '${data['auth'] ?? data['play_auth'] ?? ''}'.trim();
           if (remoteAuth.isNotEmpty) sodaAuth = remoteAuth;
+          final remoteQ =
+              '${data['quality'] ?? data['br'] ?? data['level'] ?? ''}'.trim();
+          if (remoteQ.isNotEmpty) actualQuality = remoteQ;
         }
       } catch (e) {
         debugPrint('[DiscoveryApi] resolve failed source=$source id=$id err=$e');
@@ -407,9 +503,17 @@ class DiscoveryApiClient {
     if (url == null) return null;
     if (source == 'soda' && !kIsWeb) {
       // 必须解密成本地可播文件；失败绝不能回退密文 CDN（有进度无声）。
-      return _materializeSodaStream(url, id, auth: sodaAuth);
+      final local = await _materializeSodaStream(url!, id, auth: sodaAuth);
+      if (local == null) return null;
+      return DiscoveryPlayUrl(
+        url: local,
+        quality: actualQuality ?? quality,
+      );
     }
-    return url;
+    return DiscoveryPlayUrl(
+      url: url!,
+      quality: actualQuality ?? quality,
+    );
   }
 
   /// 下载汽水密文流，用 OpenMusic 同款 AES-CTR 解成可播 m4a/flac。
@@ -776,6 +880,13 @@ class DiscoveryApiClient {
     final type = uri.queryParameters['type'] ?? 'pic';
     return 'https://music.qqovo.cn/api/meting?server=$server&type=$type&id=$id';
   }
+}
+
+class DiscoveryPlayUrl {
+  const DiscoveryPlayUrl({required this.url, this.quality});
+  final String url;
+  /// 实际命中音质（qqovo 中文名或 key），用于播放页角标。
+  final String? quality;
 }
 
 class DiscoveryPlaylist {

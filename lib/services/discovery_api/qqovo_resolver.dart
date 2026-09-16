@@ -39,48 +39,120 @@ class QqovoResolver {
     required String server,
     String preference = '320',
   }) {
-    final pref = preference.trim();
-    final wantLossless = pref == 'flac' || pref == 'high';
-    final wantHigh = wantLossless || pref == '320' || pref.isEmpty;
+    final pref = preference.trim().toLowerCase();
     if (server == 'tencent') {
-      if (wantLossless) return const ['flac', 'ogg', '320', '128'];
-      if (wantHigh) return const ['320', '128'];
-      return const ['128', '320'];
+      const chain = [
+        'atmos',
+        'master',
+        'flac',
+        'ogg',
+        '320',
+        '128',
+      ];
+      return _qualityCascade(chain, pref, const {
+        'atmos': 'atmos',
+        'master': 'master',
+        'flac': 'flac',
+        'high': 'atmos', // AudioQuality.hires.value
+        'ogg': 'ogg',
+        '320': '320',
+        '128': '128',
+        'sq': 'flac',
+      });
     }
     if (server == 'qishui') {
-      if (wantLossless) {
-        return const [
-          'lossless',
-          'hires',
-          'exhigh',
-          '320',
-          'higher',
-          'standard',
-          '128',
-        ];
-      }
-      if (wantHigh) {
-        return const ['exhigh', '320', 'higher', 'standard', '128'];
-      }
-      return const ['standard', '128', 'exhigh'];
-    }
-    // netease：优先标准码率，兼容性最好
-    if (wantLossless) {
-      return const [
-        'jymaster',
-        'sky',
+      const chain = [
+        'viper_hifi',
+        'viper_atmos',
+        'viper_tape',
+        'viper_clear',
+        'studio',
         'hires',
         'lossless',
         'exhigh',
+        '320',
         'higher',
         'standard',
         '128',
       ];
+      return _qualityCascade(chain, pref, const {
+        'viper_hifi': 'viper_hifi',
+        'viper_atmos': 'viper_atmos',
+        'viper_tape': 'viper_tape',
+        'viper_clear': 'viper_clear',
+        'studio': 'studio',
+        'atmos': 'viper_hifi',
+        'master': 'viper_hifi',
+        'hires': 'hires',
+        'high': 'viper_hifi',
+        'flac': 'lossless',
+        'lossless': 'lossless',
+        'exhigh': 'exhigh',
+        '320': 'exhigh',
+        'higher': 'exhigh',
+        'standard': 'standard',
+        '128': 'standard',
+      });
     }
-    if (wantHigh) {
-      return const ['exhigh', 'higher', 'standard', '128'];
+    // netease
+    const chain = [
+      'sky',
+      'jymaster',
+      'dolby',
+      'jyeffect',
+      'hires',
+      'lossless',
+      'exhigh',
+      'higher',
+      'standard',
+      '128',
+    ];
+    return _qualityCascade(chain, pref, const {
+      'sky': 'sky',
+      'jymaster': 'jymaster',
+      'dolby': 'dolby',
+      'jyeffect': 'jyeffect',
+      'atmos': 'sky',
+      'master': 'jymaster',
+      'viper_hifi': 'jymaster',
+      'hires': 'hires',
+      'high': 'jymaster', // AudioQuality.hires
+      'flac': 'lossless',
+      'lossless': 'lossless',
+      'exhigh': 'exhigh',
+      '320': 'exhigh',
+      'higher': 'exhigh',
+      'standard': 'standard',
+      '128': 'standard',
+    });
+  }
+
+  /// 从 [preference] 对应档位起向下试；VIP 档一律从链顶开试（接口有最高就拿最高）。
+  static List<String> _qualityCascade(
+    List<String> chain,
+    String preference,
+    Map<String, String> aliases,
+  ) {
+    final startKey = aliases[preference] ?? preference;
+    const vip = {
+      'atmos',
+      'master',
+      'sky',
+      'jymaster',
+      'dolby',
+      'jyeffect',
+      'viper_hifi',
+      'viper_atmos',
+      'viper_tape',
+      'viper_clear',
+      'studio',
+    };
+    if (vip.contains(startKey) || vip.contains(preference)) {
+      return List<String>.from(chain);
     }
-    return const ['standard', '128', 'higher', 'exhigh'];
+    final idx = chain.indexOf(startKey);
+    if (idx <= 0) return List<String>.from(chain);
+    return chain.sublist(idx);
   }
 
   Future<dynamic> meting({
@@ -206,6 +278,9 @@ class QqovoResolver {
       final session = await _ensureSession(base);
       if (session == null) return null;
 
+      QqovoHit? best;
+      var bestRank = -1;
+
       for (final quality in qualities) {
         final trackUrl =
             '$base/api/meting?server=$server&type=url&id=$songId&quality=$quality';
@@ -213,20 +288,23 @@ class QqovoResolver {
           trackUrl,
           options: Options(
             headers: _signedHeaders(base, trackUrl, session.key),
-            validateStatus: (c) => c != null && c < 500,
+            // 502/404 等继续试下一档，勿整链放弃
+            validateStatus: (c) => c != null && c < 600,
           ),
         );
         if (trackResp.statusCode == 403) {
           debugPrint('[QqovoResolver] 403 on $base — clear session/cookies');
           _sessions.remove(base);
           await _cookieJar.delete(Uri.parse(base));
-          return null;
+          return best;
         }
+        if (trackResp.statusCode != 200) continue;
         final data = trackResp.data;
         if (data is! Map) continue;
 
         var playUrl = '${data['url'] ?? ''}'.trim();
         var auth = '${data['auth'] ?? ''}'.trim();
+        final returnedLabel = '${data['quality'] ?? ''}'.trim();
         // 相对路径补全
         if (playUrl.startsWith('/')) {
           playUrl = '$base$playUrl';
@@ -240,7 +318,7 @@ class QqovoResolver {
             playUrl,
             options: Options(
               headers: _signedHeaders(base, playUrl, session.key),
-              validateStatus: (c) => c != null && c < 500,
+              validateStatus: (c) => c != null && c < 600,
             ),
           );
           final sourceData = sourceResp.data;
@@ -253,18 +331,78 @@ class QqovoResolver {
         if (playUrl.startsWith('http://')) {
           playUrl = 'https://${playUrl.substring(7)}';
         }
-        if (playUrl.startsWith('http')) {
-          debugPrint(
-            '[QqovoResolver] hit $server/$songId q=$quality auth=${auth.isNotEmpty}',
-          );
-          return QqovoHit(url: playUrl, auth: auth.isEmpty ? null : auth);
+        if (!playUrl.startsWith('http')) continue;
+
+        final label = returnedLabel.isNotEmpty ? returnedLabel : quality;
+        final rank = qualityRank(server: server, keyOrLabel: label);
+        final reqRank = qualityRank(server: server, keyOrLabel: quality);
+        final hit = QqovoHit(
+          url: playUrl,
+          auth: auth.isEmpty ? null : auth,
+          quality: label,
+          requestedQuality: quality,
+        );
+        if (rank > bestRank) {
+          best = hit;
+          bestRank = rank;
+        }
+        debugPrint(
+          '[QqovoResolver] try $server/$songId q=$quality -> $label '
+          'rank=$rank reqRank=$reqRank auth=${auth.isNotEmpty}',
+        );
+        // 未降级（或更高）则收下并停止；降级则继续试，可能下一档反而更高
+        if (rank >= reqRank) {
+          return hit;
         }
       }
+      return best;
     } catch (e) {
       debugPrint('[QqovoResolver] $base $server/$songId failed: $e');
       _sessions.remove(base);
     }
     return null;
+  }
+
+  /// 音质档位排序：越大越好。兼容 qqovo 返回的中文 `quality` 与请求 key。
+  static int qualityRank({
+    required String server,
+    required String keyOrLabel,
+  }) {
+    final q = keyOrLabel.trim().toLowerCase();
+    if (q.isEmpty) return 0;
+    bool has(String s) => q.contains(s);
+    if (server == 'tencent') {
+      if (has('全景') || q == 'atmos' || has('q000')) return 100;
+      if (has('母带') || q == 'master' || has('ai00') || has('臻品母带')) {
+        return 95;
+      }
+      if (has('sq') || q == 'flac' || q == 'ogg' || has('无损')) return 80;
+      if (has('hq') || q == '320' || has('高品')) return 50;
+      if (has('标准') || q == '128' || q == 'standard') return 20;
+      return 10;
+    }
+    if (server == 'qishui') {
+      if (has('viper_hifi') || has('蝰蛇hifi') || has('蝰蛇 hifi')) return 100;
+      if (has('viper_atmos') || has('蝰蛇全景')) return 96;
+      if (has('viper_tape') || has('蝰蛇母带')) return 94;
+      if (has('viper_clear') || has('蝰蛇超清')) return 92;
+      if (has('studio') || has('录音室')) return 88;
+      if (q == 'hires' || has('hi-res') || has('hires')) return 85;
+      if (q == 'lossless' || has('无损') || q == 'flac') return 80;
+      if (q == 'exhigh' || q == '320' || q == 'higher' || has('极高')) return 50;
+      if (q == 'standard' || q == '128' || has('标准')) return 20;
+      return 10;
+    }
+    // netease
+    if (has('环绕') || q == 'sky') return 100;
+    if (has('母带') || q == 'jymaster' || has('超清')) return 98;
+    if (has('杜比') || q == 'dolby') return 97;
+    if (has('臻音') || q == 'jyeffect') return 90;
+    if (q == 'hires' || has('hi-res') || has('hires')) return 85;
+    if (q == 'lossless' || has('无损') || q == 'flac') return 80;
+    if (q == 'exhigh' || q == '320' || q == 'higher' || has('极高')) return 50;
+    if (q == 'standard' || q == '128' || has('标准')) return 20;
+    return 10;
   }
 
   /// 远程源歌词：qqovo `type=lrc`（比酷狗按歌名搜稳，QQ/网易/汽水专用 id）。
@@ -568,9 +706,17 @@ class QqovoResolver {
 }
 
 class QqovoHit {
-  const QqovoHit({required this.url, this.auth});
+  const QqovoHit({
+    required this.url,
+    this.auth,
+    this.quality,
+    this.requestedQuality,
+  });
   final String url;
   final String? auth;
+  /// 接口实际返回的音质名（中文或 key），用于角标。
+  final String? quality;
+  final String? requestedQuality;
 }
 
 class _QqovoSession {

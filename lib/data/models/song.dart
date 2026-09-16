@@ -100,31 +100,64 @@ class Song {
 
   /// 列表角标用短音质（对齐 qqovo / 网页习惯）。
   String? get qualityBadge {
-    final q = (quality ?? '').trim().toLowerCase();
+    final q = (quality ?? '').trim();
     if (q.isEmpty) return null;
+    final lower = q.toLowerCase();
     switch (source) {
       case 'qq':
-        if (q == 'flac' || q == 'ogg' || q == 'sq') return 'SQ';
-        if (q == '320' || q == 'hq') return 'HQ';
-        if (q == '128' || q == 'standard') return '标准';
+        if (lower.contains('全景') || lower == 'atmos') return '全景声';
+        if (lower.contains('母带') || lower == 'master') return '母带';
+        if (lower == 'flac' || lower == 'ogg' || lower == 'sq' || lower.contains('sq') || lower.contains('无损')) {
+          return 'SQ';
+        }
+        if (lower == '320' || lower == 'hq' || lower.contains('hq') || lower.contains('高品')) {
+          return 'HQ';
+        }
+        if (lower == '128' || lower == 'standard' || lower.contains('标准')) {
+          return '标准';
+        }
         break;
       case 'soda':
-        if (q.contains('lossless') || q == 'flac') return '无损';
-        if (q == 'exhigh' || q == '320' || q == 'higher') return '极高';
-        if (q == 'standard' || q == '128') return '标准';
+        if (lower.contains('viper_hifi') || lower.contains('蝰蛇hifi') || lower.contains('蝰蛇 hifi')) {
+          return '蝰蛇HiFi';
+        }
+        if (lower.contains('viper') || lower.contains('蝰蛇')) return '蝰蛇';
+        if (lower.contains('studio') || lower.contains('录音室')) return '录音室';
+        if (lower.contains('lossless') || lower == 'flac' || lower.contains('无损')) {
+          return '无损';
+        }
+        if (lower == 'exhigh' || lower == '320' || lower == 'higher' || lower.contains('极高')) {
+          return '极高';
+        }
+        if (lower == 'standard' || lower == '128' || lower.contains('标准')) {
+          return '标准';
+        }
         break;
       case 'netease':
-        if (q.contains('jymaster') || q.contains('sky')) return '臻音';
-        if (q.contains('hires') || q == 'high') return 'Hi-Res';
-        if (q == 'lossless' || q == 'flac') return '无损';
-        if (q == 'exhigh' || q == '320' || q == 'higher') return '极高';
-        if (q == 'standard' || q == '128') return '标准';
+        if (lower.contains('环绕') || lower == 'sky') return '环绕';
+        if (lower.contains('杜比') || lower == 'dolby') return '杜比';
+        if (lower.contains('母带') || lower == 'jymaster' || lower.contains('超清')) {
+          return '母带';
+        }
+        if (lower.contains('臻音') || lower == 'jyeffect') return '臻音';
+        if (lower.contains('hires') || lower.contains('hi-res') || lower == 'high') {
+          return 'Hi-Res';
+        }
+        if (lower == 'lossless' || lower == 'flac' || lower.contains('无损')) {
+          return '无损';
+        }
+        if (lower == 'exhigh' || lower == '320' || lower == 'higher' || lower.contains('极高')) {
+          return '极高';
+        }
+        if (lower == 'standard' || lower == '128' || lower.contains('标准')) {
+          return '标准';
+        }
         break;
       default:
-        if (q == 'high' || q == 'hires' || q == 'hi-res') return 'Hi-Res';
-        if (q == 'flac') return '无损';
-        if (q == '320') return 'HQ';
-        if (q == '128') return '标准';
+        if (lower == 'high' || lower == 'hires' || lower == 'hi-res') return 'Hi-Res';
+        if (lower == 'flac') return '无损';
+        if (lower == '320') return 'HQ';
+        if (lower == '128') return '标准';
     }
     return quality;
   }

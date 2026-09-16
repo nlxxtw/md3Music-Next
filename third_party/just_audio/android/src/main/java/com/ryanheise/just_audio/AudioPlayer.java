@@ -850,18 +850,35 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         if (artist != null && !artist.isEmpty()) metadata.setArtist(artist);
         String album = (String)tagMap.get("album");
         if (album != null && !album.isEmpty()) metadata.setAlbumTitle(album);
-        // 必须写入 artworkUri：原子随身听 / 锁屏会剥掉 bitmap，只靠 URI 拉封面。
-        // 若此处漏写，在 CoverHttp 异步注入完成前会话一直无封面 → 音乐符占位。
+        // 写入 artworkUri：原子随身听会剥 bitmap，只靠 URI 拉图。
+        // 网易/汽水等 CDN 无 Referer 会 403——禁止把这类 https 写进首帧 metadata，
+        // 等 CoverHttp 下完后由 AudioPlaybackService 注入 content://。
         Object artObj = tagMap.get("artUri");
         if (artObj instanceof String) {
             String artUri = ((String) artObj).trim();
-            if (!artUri.isEmpty()) {
+            if (!artUri.isEmpty() && !isRefererProtectedCoverUrl(artUri)) {
                 try {
                     metadata.setArtworkUri(android.net.Uri.parse(artUri));
                 } catch (Exception ignore) {}
             }
         }
         builder.setMediaMetadata(metadata.build());
+    }
+
+    /** 原子/锁屏 Glide 无 Referer：这些 CDN 不能作为首帧 ALBUM_ART_URI。 */
+    private static boolean isRefererProtectedCoverUrl(String artUri) {
+        String u = artUri.toLowerCase(java.util.Locale.US);
+        return u.contains("music.126.net")
+            || u.contains("126.net")
+            || u.contains("163.com")
+            || u.contains("douyin")
+            || u.contains("byteimg")
+            || u.contains("bytevod")
+            || u.contains("qishui")
+            || u.contains("luna.music")
+            || u.contains("tos-cn")
+            || u.contains("snssdk")
+            || u.contains("pstatp");
     }
 
     private MediaSource[] getAudioSourcesArray(final Object json) {

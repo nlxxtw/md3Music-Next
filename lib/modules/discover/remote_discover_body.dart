@@ -9,7 +9,9 @@ import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/song_list_item.dart';
 import 'remote_fm_section.dart';
 import 'remote_playlist_page.dart';
+import 'remote_playlist_search_page.dart';
 import 'remote_toplist_page.dart';
+import '../player/full_player_route.dart';
 
 /// 发现页 · QQ / 汽水 / 网易云远程内容。
 class RemoteDiscoverBody extends StatelessWidget {
@@ -100,6 +102,17 @@ class RemoteDiscoverBody extends StatelessWidget {
           ],
           _SectionTitle(
             title: ds.source == DiscoverMusicSource.soda ? '推荐歌单' : '热门歌单',
+            trailing: IconButton(
+              tooltip: '搜索歌单',
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RemotePlaylistSearchPage(source: ds.source),
+                  ),
+                );
+              },
+            ),
           ),
           if (ds.playlists.isEmpty)
             Padding(
@@ -164,7 +177,10 @@ class _RemoteFmDetailPage extends StatelessWidget {
             song: songs[i],
             onTap: () {
               final ds = context.read<DiscoverSourceProvider>();
-              ds.playFmSongs(context.read<PlayerProvider>(), songs, i);
+              final player = context.read<PlayerProvider>();
+              // ignore: discarded_futures
+              ds.playFmSongs(player, songs, i);
+              openFullPlayer(context);
             },
           );
         },
