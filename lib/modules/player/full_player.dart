@@ -728,26 +728,31 @@ class _FullPlayerState extends State<FullPlayer>
     final player = context.read<PlayerProvider>();
     final song = player.currentSong;
     if (song != null && song.id != _lastSongId) {
-      // 封面淡入淡出：song 已经是新歌，_previousArtworkUrl 是上一首的封面
-      if (_previousArtworkUrl != null &&
-          _previousArtworkUrl != song.artworkUri) {
-        final newUrl = song.artworkUri;
+      // 切歌立刻 setState：先刷新歌名/封面树，再异步拉词，避免只换声音。
+      final newUrl = song.artworkUri;
+      final shouldFade = _previousArtworkUrl != null &&
+          _previousArtworkUrl!.isNotEmpty &&
+          _previousArtworkUrl != newUrl;
+      setState(() {
+        if (!shouldFade) {
+          _previousArtworkUrl = newUrl;
+        }
+      });
+      if (shouldFade) {
         _artworkFadeController
           ..reset()
           ..forward().then((_) {
-            // 动画结束后才更新，确保淡出期间旧封面引用不丢失
             if (mounted) setState(() => _previousArtworkUrl = newUrl);
           });
-      } else {
-        _previousArtworkUrl = song.artworkUri;
       }
       _fetchLyrics(song);
       // 预加载上一首和下一首的封面，防止切换时白屏
       final playlist = player.playlist;
       final idx = player.currentIndex;
       if (idx > 0) _preloadArtwork(playlist[idx - 1].artworkUri);
-      if (idx < playlist.length - 1)
+      if (idx < playlist.length - 1) {
         _preloadArtwork(playlist[idx + 1].artworkUri);
+      }
     } else if (song != null &&
         song.artworkUri != null &&
         song.artworkUri!.isNotEmpty &&

@@ -67,6 +67,25 @@ const _legacyQualityMap = <String, String>{
   'hires': 'high',
 };
 
+/// 远程发现（QQ/网易/汽水）走 setUrl 单曲时，是否应忽略 sequence 回写的旧 tag。
+///
+/// next() 会先把 [currentSongId] 切到下一首再 await 解析；期间旧 AudioSource
+/// 的 completed/sequence 仍可能带上一首 [tagId]。若照单同步，就会出现
+/// 「声音已是下一首，封面/歌词/歌名还停在上一首」。
+@visibleForTesting
+bool shouldIgnoreStaleRemoteSequenceTag({
+  required String tagId,
+  required String? currentSongId,
+  required bool isResolvingUrl,
+  required bool currentIsRemoteDiscovery,
+  required bool taggedSongIsRemoteDiscovery,
+}) {
+  if (currentSongId == null || tagId == currentSongId) return false;
+  final resolvingRemote =
+      isResolvingUrl && (currentIsRemoteDiscovery || taggedSongIsRemoteDiscovery);
+  return resolvingRemote || currentIsRemoteDiscovery;
+}
+
 class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   // 播放源开始/停止时的旁路回调。公开构建不注入，均为空操作。
   static Future<String?> Function(String hash, String quality)?
@@ -838,23 +857,44 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
             // 用 tag 里的 song id 反查播放列表，兼容 shuffle 下的 effective 顺序。
             final currentTag = sequenceState.currentSource!.tag;
             if (currentTag is Map && currentTag['id'] != null) {
-              final newIndex = _playlist.indexWhere(
-                (s) => s.id == currentTag['id'],
-              );
+              final tagId = '${currentTag['id']}';
+              final newIndex = _playlist.indexWhere((s) => s.id == tagId);
               if (newIndex >= 0 && newIndex != _currentIndex) {
-                _currentIndex = newIndex;
-                _currentSong = _playlist[newIndex];
-                _recordHistory(_currentSong!);
-                _updateNotification();
-                notifyListeners();
+                // QQ/网易/汽水走 setUrl 单曲：忽略解析期间旧 tag 把 currentSong 打回上一首
+                final ignore = shouldIgnoreStaleRemoteSequenceTag(
+                  tagId: tagId,
+                  currentSongId: _currentSong?.id,
+                  isResolvingUrl: _isResolvingUrl,
+                  currentIsRemoteDiscovery:
+                      _currentSong?.isRemoteDiscovery == true,
+                  taggedSongIsRemoteDiscovery:
+                      _playlist[newIndex].isRemoteDiscovery,
+                );
+                if (ignore) {
+                  // ignore: avoid_print
+                  print(
+                    '[Sequence] ignore stale tag=$tagId '
+                    'want=${_currentSong?.id} idx=$_currentIndex→$newIndex',
+                  );
+                } else {
+                  _currentIndex = newIndex;
+                  _currentSong = _playlist[newIndex];
+                  _recordHistory(_currentSong!);
+                  _updateNotification();
+                  notifyListeners();
+                }
               }
             }
-            final effectiveIndex = sequenceState.effectiveSequence.indexOf(
-              sequenceState.currentSource!,
-            );
-            if (effectiveIndex >= _playlist.length - 2 &&
-                onPlaylistEnd != null) {
-              onPlaylistEnd!();
+            // 远程单曲没有真正的 Concatenating 队列，effectiveIndex 恒为 0，
+            // 勿用它触发 onPlaylistEnd（续播由 completed → next 末尾处理）。
+            if (_currentSong?.isRemoteDiscovery != true) {
+              final effectiveIndex = sequenceState.effectiveSequence.indexOf(
+                sequenceState.currentSource!,
+              );
+              if (effectiveIndex >= _playlist.length - 2 &&
+                  onPlaylistEnd != null) {
+                onPlaylistEnd!();
+              }
             }
           }
         } catch (e) {}

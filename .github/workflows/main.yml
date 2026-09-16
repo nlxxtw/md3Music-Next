@@ -241,12 +241,12 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Flutter build APK (Impeller + Skia, split per ABI)
+      - name: Flutter build APK (Impeller arm64 only)
         run: |
           set -o pipefail
-          # 主推 Impeller（更流畅）；同时保留 Skia 兼容包；只打 arm/arm64 减小体积
+          # 只打 Impeller arm64 主包，不上传 Skia / 32 位 / 重复命名包
           flutter build apk --release --flavor impeller --split-per-abi \
-            --target-platform=android-arm,android-arm64 \
+            --target-platform=android-arm64 \
             --tree-shake-icons \
             --obfuscate --split-debug-info=build/app/outputs/symbols-impeller \
             --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
@@ -259,44 +259,25 @@ jobs:
             echo "::endgroup::"
             exit "$status"
           fi
-          flutter build apk --release --flavor skia --split-per-abi \
-            --target-platform=android-arm,android-arm64 \
-            --tree-shake-icons \
-            --obfuscate --split-debug-info=build/app/outputs/symbols-skia \
-            --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
-            --build-name=${{ steps.version.outputs.version }} \
-            --build-number=${{ steps.version.outputs.versionCode }} 2>&1 | tee build-skia.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            echo "::group::Flutter/Dart errors (skia)"
-            grep -E "Error:|error •|Error \(|FAILED|lib/.+\.dart:[0-9]+" build-skia.log || true
-            echo "::endgroup::"
-            exit "$status"
-          fi
-          # flavor + split-per-abi 实际文件名：app-{abi}-{flavor}-release.apk
           mkdir -p build/app/outputs/flutter-apk
           ls -lh build/app/outputs/flutter-apk/
           cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          cp -f build/app/outputs/flutter-apk/app-armeabi-v7a-impeller-release.apk \
-            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-          rm -f build/app/outputs/flutter-apk/app-x86_64-*-release.apk \
-            build/app/outputs/flutter-apk/app-x86_64-release.apk || true
-
-      - name: Verify APKs
-        run: |
+          # 清理非主包，避免误传
+          find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
+            ! -name 'app-arm64-v8a-release.apk' -delete || true
           ls -lh build/app/outputs/flutter-apk/
-          for f in build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-                   build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
-                   build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk; do
-            echo "=== $f ==="
-            if unzip -l "$f" > /dev/null; then
-              echo "  OK ($(du -h "$f" | cut -f1))"
-            else
-              echo "  CORRUPTED"
-              exit 1
-            fi
-          done
+
+      - name: Verify APK
+        run: |
+          f=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          echo "=== $f ==="
+          if unzip -l "$f" > /dev/null; then
+            echo "  OK ($(du -h "$f" | cut -f1))"
+          else
+            echo "  CORRUPTED"
+            exit 1
+          fi
 
       # ============================================================
       # 7. 生成更新日志
@@ -347,10 +328,7 @@ jobs:
             echo "_Built: $(date -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
             echo "### Downloads"
-            echo "- **app-arm64-v8a-release.apk** — 推荐（Impeller，约 30–40MB）"
-            echo "- **app-arm64-v8a-impeller-release.apk** — 同上（带引擎名）"
-            echo "- **app-arm64-v8a-skia-release.apk** — Skia 兼容包（花屏/异常时用）"
-            echo "- **\*-armeabi-v7a-\*** — 较旧 32 位设备"
+            echo "- **app-arm64-v8a-release.apk** — Impeller 主包（唯一下载）"
             echo ""
             echo "### Commits (${RANGE:-最近 20 条})"
             echo ""
@@ -386,11 +364,6 @@ jobs:
           append_body: false  # 默认行为：用自动生成的 changelog 替换 release 描述
           files: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
-            build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk
-            build/app/outputs/flutter-apk/app-armeabi-v7a-impeller-release.apk
-            build/app/outputs/flutter-apk/app-armeabi-v7a-skia-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

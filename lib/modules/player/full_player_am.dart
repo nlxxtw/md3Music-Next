@@ -440,25 +440,31 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
     final player = context.read<PlayerProvider>();
     final song = player.currentSong;
     if (song != null && song.id != _lastSongId) {
-      // 封面 + 背景淡入淡出
-      if (_previousArtworkUrl != null &&
-          _previousArtworkUrl != song.artworkUri) {
-        final newUrl = song.artworkUri;
+      // 切歌立刻 setState：先刷新歌名/封面树，再异步拉词，避免只换声音。
+      final newUrl = song.artworkUri;
+      final shouldFade = _previousArtworkUrl != null &&
+          _previousArtworkUrl!.isNotEmpty &&
+          _previousArtworkUrl != newUrl;
+      setState(() {
+        if (!shouldFade) {
+          _previousArtworkUrl = newUrl;
+        }
+      });
+      if (shouldFade) {
         _artworkFadeController
           ..reset()
           ..forward().then((_) {
             if (mounted) setState(() => _previousArtworkUrl = newUrl);
           });
-      } else {
-        _previousArtworkUrl = song.artworkUri;
       }
       _fetchLyrics(song);
       // 预加载上一首和下一首的封面，防止切换时白屏
       final playlist = player.playlist;
       final idx = player.currentIndex;
       if (idx > 0) _preloadArtwork(playlist[idx - 1].artworkUri);
-      if (idx < playlist.length - 1)
+      if (idx < playlist.length - 1) {
         _preloadArtwork(playlist[idx + 1].artworkUri);
+      }
     } else if (song != null &&
         song.artworkUri != null &&
         song.artworkUri!.isNotEmpty &&
@@ -1491,12 +1497,16 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                       >(
                         selector: (_, p) =>
                             (songId: p.currentSong?.id, isPlaying: p.isPlaying),
-                        builder: (context, _, __) => _buildArtworkView(
-                          playerProvider,
-                          currentSong,
-                          colorScheme,
-                          isExpanded: true,
-                        ),
+                        builder: (context, _, __) {
+                          final p = context.read<PlayerProvider>();
+                          final song = p.currentSong ?? currentSong;
+                          return _buildArtworkView(
+                            p,
+                            song,
+                            colorScheme,
+                            isExpanded: true,
+                          );
+                        },
                       ),
                 ),
                 GestureDetector(
@@ -1566,12 +1576,16 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                 // Selector 让 CommentsView 仅在切歌时重建（脱离 200ms 通知路径）
                 Selector<PlayerProvider, String?>(
                   selector: (_, p) => p.currentSong?.id,
-                  builder: (_, _, __) => CommentsView(
-                    songHash: currentSong.id,
-                    albumAudioId: currentSong.albumAudioId,
-                    artworkUri: currentSong.artworkUri,
-                    isAmStyle: true,
-                  ),
+                  builder: (context, _, __) {
+                    final song =
+                        context.read<PlayerProvider>().currentSong ?? currentSong;
+                    return CommentsView(
+                      songHash: song.id,
+                      albumAudioId: song.albumAudioId,
+                      artworkUri: song.artworkUri,
+                      isAmStyle: true,
+                    );
+                  },
                 ),
               ],
             ),
@@ -1728,12 +1742,18 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                             // Selector 让 CommentsView 仅在切歌时重建（脱离 200ms 通知路径）
                             Selector<PlayerProvider, String?>(
                               selector: (_, p) => p.currentSong?.id,
-                              builder: (_, _, __) => CommentsView(
-                                songHash: currentSong.id,
-                                albumAudioId: currentSong.albumAudioId,
-                                artworkUri: currentSong.artworkUri,
-                                isAmStyle: true,
-                              ),
+                              builder: (context, _, __) {
+                                final song = context
+                                        .read<PlayerProvider>()
+                                        .currentSong ??
+                                    currentSong;
+                                return CommentsView(
+                                  songHash: song.id,
+                                  albumAudioId: song.albumAudioId,
+                                  artworkUri: song.artworkUri,
+                                  isAmStyle: true,
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -1903,12 +1923,18 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                             // Selector 让 CommentsView 仅在切歌时重建（脱离 200ms 通知路径）
                             Selector<PlayerProvider, String?>(
                               selector: (_, p) => p.currentSong?.id,
-                              builder: (_, _, __) => CommentsView(
-                                songHash: currentSong.id,
-                                albumAudioId: currentSong.albumAudioId,
-                                artworkUri: currentSong.artworkUri,
-                                isAmStyle: true,
-                              ),
+                              builder: (context, _, __) {
+                                final song = context
+                                        .read<PlayerProvider>()
+                                        .currentSong ??
+                                    currentSong;
+                                return CommentsView(
+                                  songHash: song.id,
+                                  albumAudioId: song.albumAudioId,
+                                  artworkUri: song.artworkUri,
+                                  isAmStyle: true,
+                                );
+                              },
                             ),
                           ],
                         ),
