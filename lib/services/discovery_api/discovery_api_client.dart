@@ -232,6 +232,15 @@ class DiscoveryApiClient {
     return song.copyWith(artworkUri: pic);
   }
 
+  /// QQ / 网易 / 汽水歌词：优先 qqovo `type=lrc`，比酷狗按歌名搜命中率高。
+  Future<String?> resolveRemoteLyric(Song song) async {
+    if (!song.isRemoteDiscovery) return null;
+    final server = serverForSource(song.source ?? '');
+    final id = song.remoteTrackId.trim();
+    if (server.isEmpty || id.isEmpty) return null;
+    return QqovoResolver().resolveLyricLrc(server: server, id: id);
+  }
+
   static bool _needsArtworkResolve(String? uri) {
     if (uri == null || uri.trim().isEmpty) return true;
     final host = Uri.tryParse(uri)?.host.toLowerCase() ?? '';

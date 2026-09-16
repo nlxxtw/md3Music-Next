@@ -267,6 +267,61 @@ class QqovoResolver {
     return null;
   }
 
+  /// 远程源歌词：qqovo `type=lrc`（比酷狗按歌名搜稳，QQ/网易/汽水专用 id）。
+  /// 返回 LRC/纯文本；失败返回 null。
+  Future<String?> resolveLyricLrc({
+    required String server,
+    required String id,
+  }) async {
+    final songId = id.trim();
+    if (songId.isEmpty || server.isEmpty) return null;
+    try {
+      final data = await meting(server: server, type: 'lrc', id: songId);
+      if (data == null) return null;
+      if (data is String) {
+        final s = data.trim();
+        if (s.isEmpty) return null;
+        // 偶发返回直链
+        if (s.startsWith('http://') || s.startsWith('https://')) {
+          return await _fetchLyricBody(s);
+        }
+        // 拒绝 HTML/JSON 错误页
+        if (s.startsWith('<') || s.startsWith('{')) return null;
+        return s;
+      }
+      if (data is Map) {
+        final raw = '${data['lrc'] ?? data['lyric'] ?? data['content'] ?? ''}'.trim();
+        if (raw.isEmpty) return null;
+        if (raw.startsWith('http://') || raw.startsWith('https://')) {
+          return await _fetchLyricBody(raw);
+        }
+        return raw;
+      }
+    } catch (e) {
+      debugPrint('[QqovoResolver] resolveLyric $server/$id failed: $e');
+    }
+    return null;
+  }
+
+  Future<String?> _fetchLyricBody(String url) async {
+    try {
+      final resp = await _dio.get(
+        url,
+        options: Options(
+          responseType: ResponseType.plain,
+          validateStatus: (c) => c != null && c < 500,
+          receiveTimeout: const Duration(seconds: 12),
+        ),
+      );
+      final body = '${resp.data ?? ''}'.trim();
+      if (body.isEmpty || body.startsWith('<')) return null;
+      return body;
+    } catch (e) {
+      debugPrint('[QqovoResolver] fetch lyric body failed: $e');
+      return null;
+    }
+  }
+
   /// 解析封面直链：qqovo `type=pic` 需签名，Image / MediaSession 用不了代理 URL。
   /// 返回最终 CDN（如 `p*.music.126.net` / gtimg），失败返回 null。
   Future<String?> resolvePicUrl({

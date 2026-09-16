@@ -1,11 +1,11 @@
 {
-  "latestVersion": "13.3.27",
-  "latestBuild": 3033,
+  "latestVersion": "13.3.28",
+  "latestBuild": 3034,
   "minVersion": "0.0.0",
   "minBuild": 0,
-  "force": false,
-  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.27",
-  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.27/app-arm64-v8a-release.apk",
-  "title": "发现新版本",
-  "message": "NextMusic v13.3.27 已发布。发现页可切换酷狗 / QQ / 汽水，支持搜歌与点播。"
+  "force": true,
+  "url": "https://github.com/nlxxtw/md3Music-Next/releases/tag/v13.3.28",
+  "apkUrl": "https://github.com/nlxxtw/md3Music-Next/releases/download/v13.3.28/app-arm64-v8a-release.apk",
+  "title": "必须更新",
+  "message": "NextMusic v13.3.28：主包改回 Skia 缓解卡顿闪退；QQ/网易/汽水歌词优先走源站。请点在线安装。"
 }

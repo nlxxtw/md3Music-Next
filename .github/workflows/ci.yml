@@ -104,15 +104,15 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
-      # 构建 Release APK（仅 Impeller arm64 主包）
-      - name: Flutter build APK (release, impeller, arm64)
+      # 构建 Release APK（仅 Skia arm64 主包，避免 Impeller 机型卡顿闪退）
+      - name: Flutter build APK (release, skia, arm64)
         run: |
-          flutter build apk --release --flavor impeller --split-per-abi \
+          flutter build apk --release --flavor skia --split-per-abi \
             --target-platform=android-arm64 \
             --tree-shake-icons \
             --dart-define=APP_VERSION=ci-${{ github.sha }}
           ls -lh build/app/outputs/flutter-apk/
-          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
+          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
             ! -name 'app-arm64-v8a-release.apk' -delete || true
@@ -145,14 +145,14 @@ jobs:
           tag_name: ci-${{ github.sha }}
           name: CI Build ${{ github.sha }}
           body: |
-            ## CI 自动构建（Impeller arm64 主包）
+            ## CI 自动构建（Skia arm64 主包）
 
             **分支:** ${{ github.ref_name }}
             **提交:** ${{ github.sha }}
             **时间:** ${{ github.event.head_commit.timestamp }}
 
             ### 下载
-            - **app-arm64-v8a-release.apk** — Impeller 主包（唯一）
+            - **app-arm64-v8a-release.apk** — Skia 主包（唯一）
 
             > 此为 CI 自动构建，非正式发布版本。
           prerelease: true

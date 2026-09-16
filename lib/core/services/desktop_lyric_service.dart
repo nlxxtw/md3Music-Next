@@ -15,6 +15,7 @@ import '../../providers/theme_provider.dart';
 import '../../core/layout/ui_density.dart';
 import '../../core/utils/artwork_color_extractor.dart';
 import '../../core/utils/local_lyric_loader.dart';
+import '../../services/discovery_api/discovery_api_client.dart';
 import 'package:md3music/widgets/apple_lyrics/models/lyric_line.dart';
 import '../../widgets/apple_lyrics/layout/lyric_preferences.dart';
 import '../../widgets/apple_lyrics/parsers/lyric_parser_chain.dart';
@@ -949,6 +950,26 @@ class DesktopLyricService {
             _markLockLyricLoaded(_lines.isEmpty ? '暂无歌词' : '');
             return;
           }
+        }
+      }
+
+      // 远程发现：优先 qqovo 源站歌词，再酷狗按歌名兜底
+      if (song.isRemoteDiscovery) {
+        final remoteLrc =
+            await DiscoveryApiClient().resolveRemoteLyric(song);
+        if (!_isCurrentLyricRequest(token, requestedSongId)) return;
+        if (remoteLrc != null && remoteLrc.trim().isNotEmpty) {
+          final lines = await parseLyricOffMainThread(remoteLrc.trim());
+          if (!_isCurrentLyricRequest(token, requestedSongId)) return;
+          _lines = lines;
+          if (_lines.isEmpty) {
+            _pushLyric('暂无歌词', '', placeholder: '暂无歌词');
+          }
+          _markLockLyricLoaded(_lines.isEmpty ? '暂无歌词' : '');
+          _lyricFailedKey = null;
+          _lyricFailCount = 0;
+          _lyricNextRetryAt = null;
+          return;
         }
       }
 

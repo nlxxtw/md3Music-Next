@@ -36,6 +36,7 @@ import '../../providers/theme_provider.dart';
 import '../../providers/comment_display_provider.dart';
 import '../../services/kugou_api/kugou_api_client.dart';
 import '../../services/discovery_api/song_download_service.dart';
+import '../../services/discovery_api/discovery_api_client.dart';
 import '../../services/kugou_api/kugou_models.dart';
 import 'comments_view.dart';
 import 'lyrics_view.dart';
@@ -1011,7 +1012,16 @@ class _FullPlayerState extends State<FullPlayer>
         }
       }
 
-      // 内嵌歌词为空时回退到酷狗 API
+      // 远程发现：先走 qqovo type=lrc（按源站 id），酷狗按歌名搜作兜底
+      if (lyricText.isEmpty && song is Song && song.isRemoteDiscovery) {
+        final remoteLrc =
+            await DiscoveryApiClient().resolveRemoteLyric(song);
+        if (remoteLrc != null && remoteLrc.trim().isNotEmpty) {
+          lyricText = remoteLrc.trim();
+        }
+      }
+
+      // 内嵌 / qqovo 仍空时回退到酷狗 API
       if (lyricText.isEmpty) {
         final kugouProvider = context.read<KugouProvider>();
         // 本地 / 远程发现的 id 不是酷狗 hash：传空 hash，按歌名搜索

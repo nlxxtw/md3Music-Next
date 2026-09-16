@@ -241,29 +241,28 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Flutter build APK (Impeller arm64 only)
+      - name: Flutter build APK (Skia arm64 only)
         run: |
           set -o pipefail
-          # 只打 Impeller arm64 主包，不上传 Skia / 32 位 / 重复命名包
-          flutter build apk --release --flavor impeller --split-per-abi \
+          # 主包改回 Skia：部分 vivo/OriginOS 上 Impeller 会卡顿、白圈卡住甚至闪退
+          flutter build apk --release --flavor skia --split-per-abi \
             --target-platform=android-arm64 \
             --tree-shake-icons \
-            --obfuscate --split-debug-info=build/app/outputs/symbols-impeller \
+            --obfuscate --split-debug-info=build/app/outputs/symbols-skia \
             --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
             --build-name=${{ steps.version.outputs.version }} \
-            --build-number=${{ steps.version.outputs.versionCode }} 2>&1 | tee build-impeller.log
+            --build-number=${{ steps.version.outputs.versionCode }} 2>&1 | tee build-skia.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            echo "::group::Flutter/Dart errors (impeller)"
-            grep -E "Error:|error •|Error \(|FAILED|lib/.+\.dart:[0-9]+" build-impeller.log || true
+            echo "::group::Flutter/Dart errors (skia)"
+            grep -E "Error:|error •|Error \(|FAILED|lib/.+\.dart:[0-9]+" build-skia.log || true
             echo "::endgroup::"
             exit "$status"
           fi
           mkdir -p build/app/outputs/flutter-apk
           ls -lh build/app/outputs/flutter-apk/
-          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
+          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          # 清理非主包，避免误传
           find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
             ! -name 'app-arm64-v8a-release.apk' -delete || true
           ls -lh build/app/outputs/flutter-apk/
@@ -328,7 +327,7 @@ jobs:
             echo "_Built: $(date -u '+%Y-%m-%d %H:%M UTC')_"
             echo ""
             echo "### Downloads"
-            echo "- **app-arm64-v8a-release.apk** — Impeller 主包（唯一下载）"
+            echo "- **app-arm64-v8a-release.apk** — Skia 主包（唯一下载，兼容更稳）"
             echo ""
             echo "### Commits (${RANGE:-最近 20 条})"
             echo ""
