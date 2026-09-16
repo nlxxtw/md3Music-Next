@@ -1766,6 +1766,54 @@ class AudioPlaybackService : Service() {
         }.start()
     }
 
+    /// 将已缓存封面暴露为 content://，供原子随身听 / 锁屏 Glide 读取。
+    /// 网易 CDN 无 Referer 会 403，不能把 https://p*.music.126.net 直接塞进 ALBUM_ART_URI。
+    private fun coverUriForSession(artUrl: String?): String? {
+        if (artUrl.isNullOrEmpty()) return null
+        val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
+        val file = coverCacheFile(key) ?: coverCacheFile(artUrl)
+        if (file == null || !file.exists() || file.length() < 32) {
+            // 无本地缓存时，非网易 CDN 仍可试 http（QQ/汽水通常无需 Referer）
+            if (key.contains("music.126.net") || key.contains("126.net")) {
+                return null
+            }
+            return if (key.startsWith("http://") || key.startsWith("https://")
+                || key.startsWith("content://") || key.startsWith("file://")) {
+                key
+            } else {
+                null
+            }
+        }
+        return try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.fileprovider",
+                file,
+            )
+            // 授权给 SystemUI / 原子随身听读封面
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+            for (pkg in listOf(
+                "com.android.systemui",
+                "com.vivo.upslide",
+                "com.vivo.musicwidgetmix",
+                "com.bbk.launcher2",
+            )) {
+                try {
+                    grantUriPermission(pkg, uri, flags)
+                } catch (_: Exception) {
+                }
+            }
+            uri.toString()
+        } catch (e: Exception) {
+            Log.w(TAG, "cover FileProvider failed: ${e.message}")
+            try {
+                Uri.fromFile(file).toString()
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     /// 根据 URI 类型加载封面 Bitmap，支持：
     /// - http(s):// → URL 下载（在线音乐）
     /// - content:// → ContentResolver 加载（MediaStore albumart）
@@ -2018,6 +2066,18 @@ class AudioPlaybackService : Service() {
             // 息屏再开：同一首歌已有封面则跳过重下，避免网易无 Referer 超时拖垮主线程/线程池。
             if (sameArt && reuseBitmap != null && !reuseBitmap.isRecycled) {
                 Log.d(TAG, "封面未变，跳过重下 effectiveArtUrl=$effectiveArtUrl")
+                // 仍用本地 content:// 再注入一次：原子端剥 bitmap 后若还握着会 403 的网易 http URI，封面会一直是音符。
+                val sessionArtUri = coverUriForSession(effectiveArtUrl)
+                    ?: CoverHttp.normalizeUrl(effectiveArtUrl)
+                    ?: effectiveArtUrl
+                AudioPlayer.updateActiveSessionMetadata(
+                    requestMediaId,
+                    requestGeneration,
+                    displayTitle,
+                    displayArtist,
+                    reuseBitmap,
+                    sessionArtUri,
+                )
             } else {
             Log.d(TAG, "触发后台封面加载 effectiveArtUrl=$effectiveArtUrl fallback=$fallbackFilePath")
             Thread {
@@ -2056,17 +2116,20 @@ class AudioPlaybackService : Service() {
                         // 封面同步注入 just_audio 的媒体3 会话（该会话无封面，播放中会被 SystemUI
                         // 提为控制中心顶层）。用官方 replaceMediaItem 同 uri 替换当前 MediaItem，
                         // 只更新 metadata 不打断播放，保证控制中心/媒体3通知栏选中媒体3 会话时也有封面。
-                        // 阶段2：改为直接强依赖调用（已通过 media3-common 建立编译类路径），
-                        // 移除原反射的静默吞错（catch Throwable），使封面注入失败可被日志暴露。
+                        // 原子端会剥掉 bitmap，只消费 ALBUM_ART_URI：优先下发本地 content://
+                        // （CoverHttp 已带 Referer 下好），避免网易 CDN 被原子 Glide 无 Referer 拉成 403。
+                        val sessionArtUri = coverUriForSession(effectiveArtUrl)
+                            ?: CoverHttp.normalizeUrl(effectiveArtUrl)
+                            ?: effectiveArtUrl
                         AudioPlayer.updateActiveSessionMetadata(
                             requestMediaId,
                             requestGeneration,
                             displayTitle,
                             displayArtist,
                             displayBitmap,
-                            effectiveArtUrl
+                            sessionArtUri
                         )
-                        Log.i(TAG, "封面后台加载完成，已注入媒体3会话 bitmap=${displayBitmap.width}x${displayBitmap.height}")
+                        Log.i(TAG, "封面后台加载完成，已注入媒体3会话 bitmap=${displayBitmap.width}x${displayBitmap.height} uri=$sessionArtUri")
                     } else {
                         // 封面链路日志：所有来源均失败 → MediaSession 无 bitmap
                         Log.w(TAG, "封面后台加载失败(所有来源返回 null) effectiveArtUrl=$effectiveArtUrl " +

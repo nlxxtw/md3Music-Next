@@ -157,12 +157,40 @@ class DiscoveryApiClient {
           .toList();
       if (needIds.isEmpty) return songs;
       final map = await QqovoResolver().resolveNeteasePicUrls(needIds);
-      if (map.isEmpty) return songs;
-      return songs.map((s) {
+      var out = songs.map((s) {
         final pic = map[s.remoteTrackId];
         if (pic == null || pic.isEmpty) return s;
         return s.copyWith(artworkUri: pic);
       }).toList();
+      // 官方 detail 未覆盖的：逐条走 qqovo pic 跟跳转兜底，避免漫游卡全是音符占位
+      final stillNeed = <int>[
+        for (var i = 0; i < out.length; i++)
+          if (_needsArtworkResolve(out[i].artworkUri) &&
+              out[i].remoteTrackId.isNotEmpty)
+            i,
+      ];
+      if (stillNeed.isEmpty) return out;
+      final resolver = QqovoResolver();
+      const concurrency = 4;
+      for (var i = 0; i < stillNeed.length; i += concurrency) {
+        final slice = stillNeed.sublist(
+          i,
+          i + concurrency > stillNeed.length
+              ? stillNeed.length
+              : i + concurrency,
+        );
+        await Future.wait(slice.map((idx) async {
+          final s = out[idx];
+          final pic = await resolver.resolvePicUrl(
+            server: 'netease',
+            id: s.remoteTrackId,
+          );
+          if (pic != null && pic.isNotEmpty) {
+            out[idx] = s.copyWith(artworkUri: pic);
+          }
+        }));
+      }
+      return out;
     }
 
     // QQ / 汽水：仅对代理/空封面逐条解析（限并发）

@@ -86,6 +86,13 @@ class RemoteFmRefill {
         return;
       }
     }
+    // 池子过小全是重复歌、去重接不上时：一致地重播当前曲，避免有时停住、有时乱跳。
+    if (!_retired && _ownsQueue) {
+      _stalledAtQueueEnd = false;
+      _lastPrefetchIndex = -1;
+      await player.replayCurrentForRoaming();
+      return;
+    }
     _stalledAtQueueEnd = true;
     _lastPrefetchIndex = -1;
   }
@@ -114,12 +121,14 @@ class RemoteFmRefill {
       if (_retired || fresh.isEmpty) return false;
       final unique = fresh.where((s) => !_owned.contains(s.id)).toList();
       if (unique.isEmpty) {
-        // 全重复时仍尝试追加（fm 池可能很小），用全部
-        final fallback = fresh.where((s) => s.remoteTrackId.isNotEmpty).toList();
+        // 全重复：仍追加进播放队列（允许同 id 再入队），漫游卡/下一首预览才能继续往前走；
+        // 听感上就是「再播一遍同一首」，比静默停住或偶发跳回队首更一致。
+        final fallback =
+            fresh.where((s) => s.remoteTrackId.isNotEmpty).toList();
         if (fallback.isEmpty) return false;
         _owned.addAll(fallback.map((s) => s.id));
         discover.appendFmSongs(fallback);
-        await player.appendPlaylist(fallback);
+        await player.appendPlaylist(fallback, allowDuplicates: true);
         return player.playlist.length > before;
       }
       _owned.addAll(unique.map((s) => s.id));

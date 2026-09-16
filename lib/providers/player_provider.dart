@@ -2746,10 +2746,13 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> appendPlaylist(List<Song> songs) async {
+  Future<void> appendPlaylist(
+    List<Song> songs, {
+    bool allowDuplicates = false,
+  }) async {
     final newSongs = <Song>[];
     for (final song in songs) {
-      if (!_playlist.any((s) => s.id == song.id)) {
+      if (allowDuplicates || !_playlist.any((s) => s.id == song.id)) {
         newSongs.add(song);
         _playlist.add(song);
       }
@@ -2781,6 +2784,20 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
         notifyListeners();
       }
       _prefetchNextSongs(_currentIndex);
+    }
+  }
+
+  /// 漫游队列见底且无法续歌时：重头再播当前曲（远程源强制重解直链）。
+  Future<void> replayCurrentForRoaming() async {
+    if (_currentSong == null || _currentIndex < 0) return;
+    _resetAbnormalRetry();
+    _updatePosition(Duration.zero);
+    // 远程发现在 _resolveAndPlayCurrentSong 里 remoteMustRefresh=true，会重解直链
+    notifyListeners();
+    final ok = await _resolveAndPlayCurrentSong(play: true);
+    if (!ok) {
+      await seek(Duration.zero);
+      await resume();
     }
   }
 

@@ -28,8 +28,9 @@ android {
 
 
     defaultConfig {
-        // Vivo 原子随身听按包名识别合作应用；用户确认无需保留 com.salt.music。
-        applicationId = "com.apple.android.music"
+        // 勿用 com.apple.android.music：OriginOS 原子能状态栏会按包名显示「Apple Music」。
+        // 原子随身听合作认证走 manifest meta-data token，不依赖伪装包名。
+        applicationId = "com.md3music.md3music"
         minSdk = flutter.minSdkVersion
         targetSdk = 35
         versionCode = flutter.versionCode

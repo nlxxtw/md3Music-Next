@@ -850,6 +850,17 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
         if (artist != null && !artist.isEmpty()) metadata.setArtist(artist);
         String album = (String)tagMap.get("album");
         if (album != null && !album.isEmpty()) metadata.setAlbumTitle(album);
+        // 必须写入 artworkUri：原子随身听 / 锁屏会剥掉 bitmap，只靠 URI 拉封面。
+        // 若此处漏写，在 CoverHttp 异步注入完成前会话一直无封面 → 音乐符占位。
+        Object artObj = tagMap.get("artUri");
+        if (artObj instanceof String) {
+            String artUri = ((String) artObj).trim();
+            if (!artUri.isEmpty()) {
+                try {
+                    metadata.setArtworkUri(android.net.Uri.parse(artUri));
+                } catch (Exception ignore) {}
+            }
+        }
         builder.setMediaMetadata(metadata.build());
     }
 

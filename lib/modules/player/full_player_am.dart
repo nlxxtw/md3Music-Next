@@ -447,7 +447,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
         _artworkFadeController
           ..reset()
           ..forward().then((_) {
-            if (mounted) _previousArtworkUrl = newUrl;
+            if (mounted) setState(() => _previousArtworkUrl = newUrl);
           });
       } else {
         _previousArtworkUrl = song.artworkUri;
@@ -459,6 +459,23 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
       if (idx > 0) _preloadArtwork(playlist[idx - 1].artworkUri);
       if (idx < playlist.length - 1)
         _preloadArtwork(playlist[idx + 1].artworkUri);
+    } else if (song != null &&
+        song.artworkUri != null &&
+        song.artworkUri!.isNotEmpty &&
+        song.artworkUri != _previousArtworkUrl) {
+      // 同曲晚到的 CDN 封面（ensureRemoteArtwork）：必须刷新，否则 AM Selector
+      // 若未纳入 artworkUri 会一直停在旧图/占位。
+      final newUrl = song.artworkUri;
+      if (_previousArtworkUrl != null && _previousArtworkUrl!.isNotEmpty) {
+        _artworkFadeController
+          ..reset()
+          ..forward().then((_) {
+            if (mounted) setState(() => _previousArtworkUrl = newUrl);
+          });
+      } else {
+        setState(() => _previousArtworkUrl = newUrl);
+      }
+      _updateLyricAccent(newUrl);
     }
     // 频谱启停
     if (_spectrumEnabled && player.isPlaying && !_spectrumStarted) {
@@ -1270,16 +1287,41 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
   }
 
   Widget _buildPlayer(BuildContext context) {
-    // v4 优化：父级 build 只在切歌（currentSong.id 变化）或播放/暂停（isPlaying）时执行。
-    // position 更新（200ms）通过 AppleLyricsView 与进度条自身的 Selector 注入，不触发父级重建。
+    // v4 优化：父级 build 在切歌 / 播放态 / 封面 URI / 本地歌词态变化时执行。
+    // position 更新（200ms）仍不在 selector 里，由 AppleLyricsView 与进度条自身注入。
+    //
+    // 必须把本地歌词/封面相关字段编进 selector：Provider 的 Selector 在选中值不变时
+    // 会复用上一次 builder 产物；若只 setState 更新 `_parsedLyrics`，子树收不到新词，
+    // 表现为 QQ/汽水/网易「只换声音、歌词封面卡住」。
+    final localUi = (
+      lastSongId: _lastSongId,
+      loadingLyrics: _isLoadingLyrics,
+      lyricLines: _parsedLyrics.length,
+      lyricFormat: _lyricFormat,
+      prevArt: _previousArtworkUrl,
+    );
     return Selector<
       PlayerProvider,
-      ({String? songId, bool isPlaying, AudioQuality audioQuality})
+      ({
+        String? songId,
+        String? artworkUri,
+        bool isPlaying,
+        AudioQuality audioQuality,
+        ({
+          String? lastSongId,
+          bool loadingLyrics,
+          int lyricLines,
+          LyricFormat? lyricFormat,
+          String? prevArt,
+        }) localUi,
+      })
     >(
       selector: (_, p) => (
         songId: p.currentSong?.id,
+        artworkUri: p.currentSong?.artworkUri,
         isPlaying: p.isPlaying,
         audioQuality: p.audioQuality,
+        localUi: localUi,
       ),
       builder: (context, _, __) {
         final playerProvider = context.read<PlayerProvider>();

@@ -736,7 +736,7 @@ class _FullPlayerState extends State<FullPlayer>
           ..reset()
           ..forward().then((_) {
             // 动画结束后才更新，确保淡出期间旧封面引用不丢失
-            if (mounted) _previousArtworkUrl = newUrl;
+            if (mounted) setState(() => _previousArtworkUrl = newUrl);
           });
       } else {
         _previousArtworkUrl = song.artworkUri;
@@ -748,6 +748,21 @@ class _FullPlayerState extends State<FullPlayer>
       if (idx > 0) _preloadArtwork(playlist[idx - 1].artworkUri);
       if (idx < playlist.length - 1)
         _preloadArtwork(playlist[idx + 1].artworkUri);
+    } else if (song != null &&
+        song.artworkUri != null &&
+        song.artworkUri!.isNotEmpty &&
+        song.artworkUri != _previousArtworkUrl) {
+      // 同曲晚到的 CDN 封面
+      final newUrl = song.artworkUri;
+      if (_previousArtworkUrl != null && _previousArtworkUrl!.isNotEmpty) {
+        _artworkFadeController
+          ..reset()
+          ..forward().then((_) {
+            if (mounted) setState(() => _previousArtworkUrl = newUrl);
+          });
+      } else {
+        setState(() => _previousArtworkUrl = newUrl);
+      }
     }
     // 频谱启动：开启频谱且播放中时才启动（Visualizer(0) 需要活跃音频轨道）
     if (_spectrumEnabled && player.isPlaying && !_spectrumStarted) {

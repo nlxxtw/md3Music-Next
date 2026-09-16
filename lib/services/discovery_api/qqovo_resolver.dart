@@ -277,7 +277,9 @@ class QqovoResolver {
     if (songId.isEmpty) return null;
     if (server == 'netease') {
       final map = await resolveNeteasePicUrls([songId]);
-      return map[songId];
+      final hit = map[songId];
+      if (hit != null && hit.isNotEmpty) return hit;
+      // 官方 detail 被墙/失败时回退 qqovo 签名 pic 跟跳转
     }
     for (final base in _bases) {
       try {
