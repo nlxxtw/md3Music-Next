@@ -1154,7 +1154,7 @@ class AudioPlaybackService : Service() {
         // isRunning 残留 true，此时不能继续让位（会失去前台保护）。
         //
         // 同样：媒体3 now-playing（MD3MusicMediaSessionService / 通知 1001）已是
-        // mediaPlayback FGS 时，也让位移除 1002，避免通知中心出现「MD3Music」空通知。
+                // mediaPlayback FGS 时，也让位移除 1002，避免通知中心出现「NextMusic」空通知。
         if (isFloatingLyricActuallyRunning() || isMediaSessionServiceRunning()) {
             // 让位给 FloatingLyricService / MediaSessionService。
             // 但 startForegroundService 拉起本服务会产生"5 秒内必须 startForeground"
@@ -1195,7 +1195,7 @@ class AudioPlaybackService : Service() {
 
     /// 前台服务占位通知：唤醒场景下服务可能刚被 startForegroundService 拉起，
     /// 需要尽快进入前台。真实内容随后由 Dart 端 updateNotification 覆盖。
-    /// 使用空标题 + 保活频道，避免通知中心出现「MD3Music」占位条。
+    /// 使用空标题 + 保活频道，避免通知中心出现「NextMusic」占位条。
     private fun ensureForeground() {
         if (foregroundStarted) return
         foregroundStarted = true
@@ -2046,7 +2046,7 @@ class AudioPlaybackService : Service() {
         // 元数据由媒体3会话注入（见下），无需本服务发布 MediaSession 元数据。
         startForegroundDetached(builder)
         // 媒体3 通知可能稍晚才起来：延迟再探测一次，起来后让位移除空通知，
-        // 避免通知中心长期并列「MD3Music」空条 + 媒体控制卡。
+        // 避免通知中心长期并列「NextMusic」空条 + 媒体控制卡。
         Handler(Looper.getMainLooper()).postDelayed({
             try {
                 if (isMediaSessionServiceRunning() || isFloatingLyricActuallyRunning()) {

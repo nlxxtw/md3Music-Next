@@ -125,7 +125,7 @@ class MusicWidgetProvider : AppWidgetProvider() {
         }
 
         // 缓存最近一次的文本状态，供封面更新时复用
-        private var lastTitle = "MD3Music"
+        private var lastTitle = "NextMusic"
         private var lastArtist = "未在播放"
         private var lastPlaying = false
         private var lastPosition = 0L

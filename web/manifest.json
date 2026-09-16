@@ -1,11 +1,11 @@
 {
-    "name": "md3Music",
-    "short_name": "md3Music",
+    "name": "NextMusic",
+    "short_name": "NextMusic",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "NextMusic - Music player with Material Design 3",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

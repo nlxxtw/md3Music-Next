@@ -1477,7 +1477,7 @@ class _SettingsPageState extends State<SettingsPage>
           },
         ),
         // ③ MD3 风格专属：歌手写真背景 + 其从属的间隔 / 透明度
-        _buildGroupLabel('MD3Music 风格', colorScheme),
+        _buildGroupLabel('NextMusic 风格', colorScheme),
         // search: 写真 背景 轮播
         SwitchListTile(
           title: const Text('歌手写真背景轮播'),
@@ -1525,7 +1525,7 @@ class _SettingsPageState extends State<SettingsPage>
             trailing: Text('${(_artistPhotoOpacity * 100).round()}%'),
           ),
         // ④ Apple Music 风格专属：先歌词内容/排版，再颜色，再特效，最后性能兜底
-        _buildGroupLabel('Apple Music 风格', colorScheme),
+        _buildGroupLabel('AM 风格', colorScheme),
         // search: 对唱 男女
         SwitchListTile(
           title: const Text('男女对唱歌词优化'),
@@ -2713,7 +2713,7 @@ class _SettingsPageState extends State<SettingsPage>
           onTap: () {
             showLicensePage(
               context: context,
-              applicationName: 'MD3Music',
+              applicationName: 'NextMusic',
               applicationVersion: _appVersion.isEmpty
                   ? kBuildAppVersion
                   : _appVersion,
@@ -2908,7 +2908,7 @@ class _SettingsPageState extends State<SettingsPage>
       children: [
         _buildStyleCard(
           colorScheme: colorScheme,
-          title: 'MD3Music',
+          title: 'NextMusic',
           subtitle: 'Material 3 风格',
           isSelected: !_useAmStylePlayer,
           onTap: () {
@@ -2921,7 +2921,7 @@ class _SettingsPageState extends State<SettingsPage>
         const SizedBox(width: 16),
         _buildStyleCard(
           colorScheme: colorScheme,
-          title: 'Apple Music',
+          title: 'AM 风格',
           subtitle: '模糊封面 + 逐字歌词',
           isSelected: _useAmStylePlayer,
           onTap: () {

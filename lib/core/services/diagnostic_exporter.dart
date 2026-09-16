@@ -54,7 +54,7 @@ class DiagnosticExporter {
     final zip = await packageZip(
       sourceDir: workDir,
       outputDir: tmpRoot,
-      fileName: 'MD3Music_diagnostics_$stamp.zip',
+      fileName: 'NextMusic_diagnostics_$stamp.zip',
     );
     try {
       workDir.deleteSync(recursive: true);
@@ -67,8 +67,8 @@ class DiagnosticExporter {
     final zip = await buildReport();
     await Share.shareXFiles(
       [XFile(zip.path)],
-      subject: 'MD3Music 诊断日志',
-      text: 'MD3Music 诊断日志（包含设备信息，不包含账号数据）',
+      subject: 'NextMusic 诊断日志',
+      text: 'NextMusic 诊断日志（包含设备信息，不包含账号数据）',
     );
   }
 
@@ -101,7 +101,7 @@ class DiagnosticExporter {
     required DateTime exportTime,
   }) {
     final buffer = StringBuffer()
-      ..writeln('MD3Music 诊断报告')
+      ..writeln('NextMusic 诊断报告')
       ..writeln('导出时间: ${exportTime.toIso8601String()}')
       ..writeln('')
       ..writeln('[应用]')

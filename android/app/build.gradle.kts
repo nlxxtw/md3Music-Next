@@ -35,14 +35,24 @@ android {
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        // 渲染引擎固定为 skia（EnableImpeller=false，兼容优先）。Flutter 3.44 只认
-        // manifest 静态值。仅此一处、无 flavor：保证 split-per-abi 产物名不含引擎标识。
-        manifestPlaceholders["enableImpeller"] = "false"
-        // USB 独占输出 C++ 驱动：只编译与 jniLibs 相同的 4 个 ABI
+        // USB：只编真机常用 ABI，去掉模拟器 x86 可减小 so 体积
         externalNativeBuild {
             cmake {
-                abiFilters("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+                abiFilters("arm64-v8a", "armeabi-v7a")
             }
+        }
+    }
+
+    // skia / impeller 双渲染：Flutter 3.x 只认 manifest 静态 EnableImpeller。
+    flavorDimensions += "renderer"
+    productFlavors {
+        create("skia") {
+            dimension = "renderer"
+            manifestPlaceholders["enableImpeller"] = "false"
+        }
+        create("impeller") {
+            dimension = "renderer"
+            manifestPlaceholders["enableImpeller"] = "true"
         }
     }
 

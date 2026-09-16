@@ -67,9 +67,14 @@ class AppUpdateInfo {
       minBuild: (json['minBuild'] as num?)?.toInt() ?? 0,
       force: json['force'] == true,
       url: releaseUrl,
-      apkUrl: (apk != null && apk.isNotEmpty)
-          ? apk
-          : 'https://github.com/nlxxtw/md3Music-Next/releases/download/v$version/app-arm64-v8a-release.apk',
+      apkUrl: () {
+        final fallback =
+            'https://github.com/nlxxtw/md3Music-Next/releases/download/v$version/app-arm64-v8a-release.apk';
+        if (apk == null || apk.isEmpty) return fallback;
+        // 防止 sync 漏改 apkUrl 时仍指向旧 tag，造成「装完还强制更新」死循环
+        if (!apk.contains('/download/v$version/')) return fallback;
+        return apk;
+      }(),
       title: json['title']?.toString() ?? '发现新版本',
       message: json['message']?.toString() ?? '有新版本可用，请更新后继续使用。',
     );

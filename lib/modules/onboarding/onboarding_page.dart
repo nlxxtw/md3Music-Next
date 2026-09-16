@@ -155,7 +155,7 @@ class _OnboardingPageState extends State<OnboardingPage>
           Padding(
             padding: const EdgeInsets.only(left: 16),
             child: Text(
-              'MD3Music',
+              'NextMusic',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -646,7 +646,7 @@ class _OnboardingPageState extends State<OnboardingPage>
         children: [
           _buildStyleCard(
             colorScheme: colorScheme,
-            title: 'MD3Music',
+            title: 'NextMusic',
             subtitle: 'Material 3 风格',
             isSelected: !_useAmStylePlayer,
             onTap: () => setState(() => _useAmStylePlayer = false),
@@ -655,7 +655,7 @@ class _OnboardingPageState extends State<OnboardingPage>
           const SizedBox(width: 16),
           _buildStyleCard(
             colorScheme: colorScheme,
-            title: 'Apple Music',
+            title: 'AM 风格',
             subtitle: '模糊封面 + 逐字歌词',
             isSelected: _useAmStylePlayer,
             onTap: () => setState(() => _useAmStylePlayer = true),

@@ -346,7 +346,7 @@ class _AppViewState extends State<_AppView> {
     final fontFamily = themeProvider.effectiveFontFamily;
 
     return MaterialApp(
-      title: 'MD3Music',
+      title: 'NextMusic',
       debugShowCheckedModeBanner: false,
       // 同时传 theme 和 darkTheme，并根据 ThemeProvider.effectiveSeedColor
       // 动态生成（支持「莫奈色」开关切换系统主色）。

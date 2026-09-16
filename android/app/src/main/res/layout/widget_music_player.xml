@@ -82,7 +82,7 @@
                     android:id="@+id/widget_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="MD3Music"
+                    android:text="NextMusic"
                     android:textSize="14sp"
                     android:fontFamily="sans-serif-medium"
                     android:maxLines="1"

@@ -104,11 +104,19 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
 
-      # 构建 Release APK（按 ABI 拆分）
-      - name: Flutter build APK (release, split per ABI)
+      # 构建 Release APK（Impeller 主推；仅 arm/arm64，减小体积）
+      - name: Flutter build APK (release, impeller, split per ABI)
         run: |
-          flutter build apk --release --split-per-abi \
+          flutter build apk --release --flavor impeller --split-per-abi \
+            --target-platform=android-arm,android-arm64 \
+            --tree-shake-icons \
             --dart-define=APP_VERSION=ci-${{ github.sha }}
+          cp -f build/app/outputs/flutter-apk/app-impeller-arm64-v8a-release.apk \
+            build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          cp -f build/app/outputs/flutter-apk/app-impeller-armeabi-v7a-release.apk \
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk || true
+          rm -f build/app/outputs/flutter-apk/app-*-x86_64-release.apk \
+            build/app/outputs/flutter-apk/app-x86_64-release.apk || true
 
       - name: Verify APKs
         run: |
@@ -146,7 +154,7 @@ jobs:
         with:
           name: app-x86_64-release
           path: build/app/outputs/flutter-apk/app-x86_64-release.apk
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 7
 
       # 自动创建 Release 并上传 APK（仅 push 到 main/master 时）
@@ -157,7 +165,7 @@ jobs:
           tag_name: ci-${{ github.sha }}
           name: CI Build ${{ github.sha }}
           body: |
-            ## CI 自动构建
+            ## CI 自动构建（Impeller）
 
             **分支:** ${{ github.ref_name }}
             **提交:** ${{ github.sha }}
@@ -166,7 +174,6 @@ jobs:
             ### 下载
             - **app-arm64-v8a-release.apk** — 推荐：大多数现代 Android 设备
             - **app-armeabi-v7a-release.apk** — 较旧的 32 位设备
-            - **app-x86_64-release.apk** — Android 模拟器
 
             > 此为 CI 自动构建，非正式发布版本。
           prerelease: true
@@ -174,6 +181,5 @@ jobs:
           files: |
             build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-x86_64-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

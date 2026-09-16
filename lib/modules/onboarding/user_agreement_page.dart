@@ -42,13 +42,13 @@ class UserAgreementPage extends StatefulWidget {
         title: const Text('免责声明'),
         content: const SingleChildScrollView(
           child: Text(
-            '感谢你关注 MD3Music。在下载、安装或使用本软件之前，请仔细阅读以下条款。\n\n'
-            '一、本应用 MD3Music-Next 基于开源 MD3Music 二次维护，'
+            '感谢你关注 NextMusic。在下载、安装或使用本软件之前，请仔细阅读以下条款。\n\n'
+            '一、本应用 NextMusic（基于开源 MD3Music 二次维护），'
             '不是酷狗音乐的官方软件，也未获得酷狗音乐及其母公司的官方授权、认可或赞助。\n\n'
             '二、本软件所有的音乐播放链接、歌词文本、专辑封面、歌单数据等，'
             '均通过调用网络上酷狗音乐公开的公开 API 接口获取。'
             '以上所有数据的知识产权与版权，均归原始权利人所有。\n\n'
-            '三、MD3Music 本身不搭建任何音乐缓存服务器，也不提供任何盗版音乐下载源。'
+            '三、NextMusic 本身不搭建任何音乐缓存服务器，也不提供任何盗版音乐下载源。'
             '软件仅充当"浏览器"角色，在用户本地展示公开数据。\n\n'
             '四、本应用从未收集任何用户隐私数据，所有操作产生的数据都保留在用户本地。\n\n'
             '五、该软件仅供交流学习，严禁用于商业用途。\n\n'
@@ -149,7 +149,7 @@ class _UserAgreementPageState extends State<UserAgreementPage> {
                       const SizedBox(height: 12),
                       _Clause(
                         index: '一、',
-                        text: '本应用"MD3Music"是作为个人兴趣业余开发，不具有任何商业行为。',
+                        text: '本应用"NextMusic"是作为个人兴趣业余开发，不具有任何商业行为。',
                       ),
                       _Clause(
                         index: '二、',

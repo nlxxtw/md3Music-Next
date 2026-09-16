@@ -93,7 +93,7 @@ class DiagnosticLogger {
       _installDebugPrintCapture();
       _installErrorHooks();
       _flushTimer = Timer.periodic(_flushInterval, (_) => flush());
-      i('=== MD3Music 诊断日志已启用 ${DateTime.now()} ===');
+      i('=== NextMusic 诊断日志已启用 ${DateTime.now()} ===');
     } catch (e, stack) {
       // 初始化失败只走原始 debugPrint，绝不影响启动流程
       _originalDebugPrint?.call('[DiagnosticLogger] 初始化失败: $e\n$stack');

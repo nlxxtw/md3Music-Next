@@ -79,7 +79,13 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Flutter build APK
-        run: flutter build apk --${{ inputs.build_type }}
+        run: |
+          flutter build apk --${{ inputs.build_type }} --flavor impeller
+          # 方便 Artifacts 下载名稳定
+          if [ -f build/app/outputs/flutter-apk/app-impeller-${{ inputs.build_type }}.apk ]; then
+            cp -f build/app/outputs/flutter-apk/app-impeller-${{ inputs.build_type }}.apk \
+              build/app/outputs/flutter-apk/app-${{ inputs.build_type }}.apk
+          fi
 
       - name: Verify APK
         run: |

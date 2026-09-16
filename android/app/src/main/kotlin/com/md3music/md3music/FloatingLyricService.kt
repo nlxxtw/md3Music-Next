@@ -425,7 +425,7 @@ class FloatingLyricService : Service() {
         val lockText = if (locked) "解锁歌词" else "锁定歌词"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MD3Music 桌面歌词")
+            .setContentTitle("NextMusic 桌面歌词")
             .setContentText(if (locked) "已锁定 · 点击穿透" else "已开启 · 可拖动")
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setOngoing(true)

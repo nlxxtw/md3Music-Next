@@ -896,7 +896,7 @@ class FloatingRecognitionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("MD3Music 悬浮窗识曲")
+            .setContentTitle("NextMusic 悬浮窗识曲")
             .setContentText("点击悬浮窗按钮识别正在播放的音乐")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)

@@ -12,7 +12,7 @@ import '../../providers/player_provider.dart';
 import '../../services/kugou_api/kugou_api_client.dart';
 import 'discovery_api_client.dart';
 
-/// 在线歌曲下载（可选音质）：解析直链 → 写入公共 Download/MD3Music。
+/// 在线歌曲下载（可选音质）：解析直链 → 写入公共 Download/NextMusic。
 class SongDownloadService {
   SongDownloadService._();
   static final SongDownloadService instance = SongDownloadService._();
@@ -144,10 +144,10 @@ class SongDownloadService {
     Directory dir;
     try {
       dir = Directory(
-        '${(await getExternalStorageDirectory())?.path ?? (await getApplicationDocumentsDirectory()).path}/MD3Music',
+        '${(await getExternalStorageDirectory())?.path ?? (await getApplicationDocumentsDirectory()).path}/NextMusic',
       );
       // 优先公共 Download（若可写）
-      final publicDl = Directory('/storage/emulated/0/Download/MD3Music');
+      final publicDl = Directory('/storage/emulated/0/Download/NextMusic');
       if (await publicDl.parent.exists()) {
         try {
           if (!await publicDl.exists()) await publicDl.create(recursive: true);
@@ -159,7 +159,7 @@ class SongDownloadService {
       }
     } catch (_) {
       dir = await getApplicationDocumentsDirectory();
-      dir = Directory('${dir.path}/MD3Music');
+      dir = Directory('${dir.path}/NextMusic');
     }
     if (!await dir.exists()) await dir.create(recursive: true);
     final safe = '${song.artist} - ${song.displayName}'
