@@ -166,7 +166,7 @@ class LyricAnimationSettingsPage extends StatelessWidget {
         LyricPreferences.defaultStaggerFromCurrentLine);
     if (context.mounted) {
       HapticFeedback.lightImpact();
-      AppToast.show(context, '已恢复本页默认值');
+      showToast('已恢复本页默认值');
     }
   }
 
