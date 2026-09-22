@@ -280,9 +280,8 @@ jobs:
             echo "::endgroup::"
             exit "$status"
           fi
-          # 保留稳定文件名，便于 Release / 手动下载
-          cp -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk \
-            build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
+          # Flutter 已输出 app-arm64-v8a-impeller-release.apk，勿再 cp 到同路径（会失败）
+          test -f build/app/outputs/flutter-apk/app-arm64-v8a-impeller-release.apk
           ls -lh build/app/outputs/flutter-apk/
 
       - name: Keep release APKs only
