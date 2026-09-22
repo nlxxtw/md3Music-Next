@@ -1,3 +1,10 @@
+## v13.3.38
+
+- 通知栏歌词取消逐字卡拉 OK，仅换行更新并节流刷新，减轻 SystemUI/原子卡顿
+- 补齐 `androidx.palette:palette-ktx`，修复 CoverPlayer 小组件 Kotlin 编译失败
+
+---
+
 ## v13.3.37
 
 - 修复歌词动画设置页 `AppToast` 未定义导致 Skia Release 编译失败

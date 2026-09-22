@@ -7,8 +7,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.DefaultMediaNotificationProvider
 
 /**
- * 媒体通知：歌名下方 contentText 优先显示跑马灯/卡拉OK 歌词（白=已唱，灰=未唱），
- * 无歌词时回退为歌手名。
+ * 媒体通知：歌名下方 contentText 优先显示当前整行歌词（无逐字动画，避免
+ * 高频 refresh 卡死 SystemUI/原子），无歌词时回退为歌手名。
  */
 @OptIn(UnstableApi::class)
 class LyricMediaNotificationProvider(
