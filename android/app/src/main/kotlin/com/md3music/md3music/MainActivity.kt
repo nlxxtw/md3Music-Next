@@ -466,6 +466,7 @@ class MainActivity : FlutterActivity() {
                             // media3 会话承载（不受影响），但封面注入依赖本服务前台启动——
                             // 直接调 AudioPlaybackService.injectCover 兜底注入封面到媒体3会话。
                             AudioPlaybackService.injectCover(
+                                this,
                                 call.argument<String>("songId") ?: "",
                                 call.argument<String>("title") ?: "",
                                 call.argument<String>("artist") ?: "",

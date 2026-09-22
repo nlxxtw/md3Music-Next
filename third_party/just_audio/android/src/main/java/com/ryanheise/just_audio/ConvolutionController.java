@@ -31,8 +31,8 @@ public final class ConvolutionController {
    * Static IR alone cannot "run" left/right — orbit supplies the motion.
    */
   private volatile boolean orbitEnabled;
-  private volatile float orbitHz = 0.12f;
-  private volatile float orbitDepth = 0.9f;
+  private volatile float orbitHz = 0.07f;
+  private volatile float orbitDepth = 0.72f;
 
   /** True when IR is 4-channel binaural matrix. */
   private volatile boolean binaural;
@@ -264,27 +264,29 @@ public final class ConvolutionController {
     loadedPath = label == null ? "" : label;
     clearRateCache();
 
-    // EchoMusic Builtin default is fully wet (mix=1). We keep a little dry for
-    // non-orbit IRs; orbit presets stay mostly wet so L↔R motion is not masked.
+    // Orbit presets: keep enough dry for vocal clarity; wet orbits for 360.
+    // Period ≈ 12–18s/rev (was ~6–9s and felt like ping-pong).
     String name = label == null ? "" : label;
     boolean orbitPreset = isOrbitPresetName(name);
     if (orbitPreset) {
-      wet = 0.92f;
-      dry = 0.08f;
-      outputGain = 0.86f;
-      float hz = 0.13f;
+      wet = 0.74f;
+      dry = 0.26f;
+      outputGain = 0.9f;
+      float hz = 0.07f; // ~14s / revolution
       if (name.contains("深空")) {
-        hz = 0.08f;
+        hz = 0.055f; // ~18s，更空旷
       } else if (name.contains("近场")) {
-        hz = 0.16f;
+        hz = 0.08f; // ~12.5s（原先 0.16 太快）
       } else if (name.contains("舞台")) {
-        hz = 0.11f;
+        hz = 0.065f; // ~15s
       } else if (name.contains("宽景")) {
-        hz = 0.14f;
+        hz = 0.06f; // ~17s
+      } else if (name.contains("双耳")) {
+        hz = 0.068f;
       }
       orbitEnabled = true;
       orbitHz = hz;
-      orbitDepth = 0.95f;
+      orbitDepth = 0.72f; // 环绕感够用，不过度甩干声
     } else if (binaural) {
       // Match EchoMusic: trust the 4ch matrix
       wet = 1.0f;

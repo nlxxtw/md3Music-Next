@@ -120,6 +120,19 @@ class AudioPlaybackService : Service() {
         // 磁盘缓存上限（张）：超限清空最旧文件，避免无限增长
         private const val COVER_CACHE_MAX = 200
 
+        /** 供 companion injectCover / FileProvider 使用的应用 Context */
+        @Volatile
+        private var appContext: Context? = null
+
+        private val ATOMIC_COVER_GRANT_PKGS = listOf(
+            "com.android.systemui",
+            "com.vivo.upslide",
+            "com.vivo.musicwidgetmix",
+            "com.vivo.originui",
+            "com.bbk.launcher2",
+            "com.vivo.launcher",
+        )
+
         /// 进程被杀后由本服务创建的后台 FlutterEngine 是否已就绪。
         /// Dart 端 PlayerProvider 完成状态恢复后会通过 playerReady 通知置为 true。
         @Volatile
@@ -128,42 +141,118 @@ class AudioPlaybackService : Service() {
         /// 当前是否正在播放（供 LockScreenLyricReceiver 判断锁屏时是否拉起歌词界面）。
         @Volatile
         var isNowPlaying = false
-        /// MD3Music fork（方案A·封面兜底）：前台服务启动被拒（mAllowStartForeground=false，
-        /// 如后台切歌/跨fade 收敛瞬间）时由 MainActivity 直接调用注入封面，
-        /// 不依赖 AudioPlaybackService 启动。处理 http(s) 在线封面，命中内存缓存免下载。
+
+        /** 落盘封面到 cover_cache，返回缓存 File（原子/SystemUI 只认 content://）。 */
+        @JvmStatic
+        fun persistCoverToDisk(context: Context, artUrl: String, bmp: Bitmap): File? {
+            if (bmp.isRecycled) return null
+            return try {
+                val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
+                coverMemoryCache[key] = bmp
+                if (key != artUrl) coverMemoryCache[artUrl] = bmp
+                val dir = File(context.cacheDir, COVER_CACHE_DIR)
+                if (!dir.exists()) dir.mkdirs()
+                val cf = File(dir, key.hashCode().toString() + ".jpg")
+                if (!cf.exists() || cf.length() < 32) {
+                    FileOutputStream(cf).use { out ->
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 88, out)
+                        out.flush()
+                    }
+                }
+                try {
+                    val files = dir.listFiles()?.filter { it.isFile } ?: emptyList()
+                    if (files.size > COVER_CACHE_MAX) {
+                        files.sortedBy { it.lastModified() }
+                            .take(files.size - COVER_CACHE_MAX)
+                            .forEach { it.delete() }
+                    }
+                } catch (_: Exception) {}
+                cf.takeIf { it.exists() && it.length() >= 32 }
+            } catch (e: Exception) {
+                Log.w(TAG, "persistCoverToDisk failed: ${e.message}")
+                null
+            }
+        }
+
+        /**
+         * 把已落盘封面暴露为 content:// 并授权给 SystemUI/原子。
+         * 网易/汽水 CDN 无 Referer → 原子 Glide 403；酷狗 CDN 常能直链，所以酷狗「看起来正常」。
+         * 统一走 content:// 后各源行为一致。
+         */
+        @JvmStatic
+        fun contentUriForCachedCover(context: Context, artUrl: String): String? {
+            if (artUrl.startsWith("content://")) return artUrl
+            val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
+            val dir = File(context.cacheDir, COVER_CACHE_DIR)
+            val file = File(dir, key.hashCode().toString() + ".jpg").takeIf {
+                it.exists() && it.length() >= 32
+            } ?: File(dir, artUrl.hashCode().toString() + ".jpg").takeIf {
+                it.exists() && it.length() >= 32
+            } ?: return null
+            return try {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    file,
+                )
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+                for (pkg in ATOMIC_COVER_GRANT_PKGS) {
+                    try {
+                        context.grantUriPermission(pkg, uri, flags)
+                    } catch (_: Exception) {
+                    }
+                }
+                uri.toString()
+            } catch (e: Exception) {
+                Log.w(TAG, "contentUriForCachedCover failed: ${e.message}")
+                null
+            }
+        }
+
+        /// MD3Music fork（方案A·封面兜底）：前台服务启动被拒时由 MainActivity 直接注入封面。
+        /// 必须下发 content://（禁止原始 https）：否则网易/汽水被原子端无 Referer 拉 → 403 无封面。
         @JvmStatic
         fun injectCover(
+            context: Context,
             mediaId: String,
             title: String,
             artist: String,
             artUrl: String?,
             fallbackFilePath: String?
         ) {
+            appContext = context.applicationContext
             val effective = artUrl ?: fallbackFilePath ?: return
             Thread {
                 try {
-                    // 1) 内存缓存命中：先剔除已回收的失效条目，避免复用后 isRecycled 判 false
                     var bmp: Bitmap? = null
                     if (effective.startsWith("http://") || effective.startsWith("https://")) {
-                        val cached = coverMemoryCache[effective]
+                        val key = CoverHttp.normalizeUrl(effective) ?: effective
+                        val cached = coverMemoryCache[key] ?: coverMemoryCache[effective]
                         bmp = if (cached != null && cached.isRecycled) {
+                            coverMemoryCache.remove(key)
                             coverMemoryCache.remove(effective)
                             null
                         } else cached
                     }
-                    // 2) 未命中：按来源加载（http 下载 / file·local·纯路径读内嵌封面），
-                    //    http 下载失败时回退 fallbackFilePath
                     if (bmp == null) {
                         bmp = loadCoverBitmapForInject(effective, fallbackFilePath)
                     }
                     if (bmp != null && !bmp.isRecycled) {
-                        // 降采样到 512px 后再注入，避免大图常驻内存
                         val display = resizeCoverBitmap(bmp, 512)
+                        val key = CoverHttp.normalizeUrl(effective) ?: effective
+                        persistCoverToDisk(context.applicationContext, key, display)
+                        val sessionUri = contentUriForCachedCover(
+                            context.applicationContext, key
+                        )
+                        // 无 content:// 时宁可不写 URI（勿塞 https，原子会 403 成空白）
                         AudioPlayer.updateActiveSessionMetadata(
-                            mediaId, 0L, title, artist, display, effective)
-                        Log.i(TAG, "injectCover: 封面注入成功 title=" + title)
+                            mediaId, 0L, title, artist, display, sessionUri)
+                        Log.i(
+                            TAG,
+                            "injectCover: ok title=$title uri=$sessionUri"
+                        )
                     } else {
-                        Log.w(TAG, "injectCover: 封面加载失败 url=" + effective)
+                        Log.w(TAG, "injectCover: 封面加载失败 url=$effective")
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "injectCover 异常 " + e.message)
@@ -171,7 +260,7 @@ class AudioPlaybackService : Service() {
             }.start()
         }
 
-        /// 兜底封面加载：http(s) 在线下载（成功写入内存缓存）；非 http 或下载失败时
+        /// 兜底封面加载：http(s) 在线下载（成功写入内存+磁盘）；非 http 或下载失败时
         /// 依次尝试 [source]（file:///local:///纯路径）与 [fallback] 的内嵌封面。
         private fun loadCoverBitmapForInject(source: String, fallback: String?): Bitmap? {
             var bmp: Bitmap? = null
@@ -184,6 +273,7 @@ class AudioPlaybackService : Service() {
                             val key = CoverHttp.normalizeUrl(source) ?: source
                             coverMemoryCache[key] = bmp
                             if (key != source) coverMemoryCache[source] = bmp
+                            appContext?.let { persistCoverToDisk(it, key, bmp) }
                         }
                     } finally {
                         conn.disconnect()
@@ -245,6 +335,7 @@ class AudioPlaybackService : Service() {
         /// 与磁盘缓存（cacheDir/cover_cache），切歌时 injectCover/showNotification 命中秒显。
         @JvmStatic
         fun prefetchCovers(context: Context, urls: List<String>) {
+            appContext = context.applicationContext
             for (url in urls) {
                 if (url.isEmpty() || (!url.startsWith("http://") && !url.startsWith("https://"))) continue
                 // 内存缓存命中（且未回收）则跳过
@@ -811,6 +902,7 @@ class AudioPlaybackService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        appContext = applicationContext
         createNotificationChannel()
         notificationManager = getSystemService(NotificationManager::class.java)
         registerReceiver()
@@ -1700,11 +1792,17 @@ class AudioPlaybackService : Service() {
         }
     }
 
-    /// 从缓存取封面：先内存后磁盘，命中即返回（同步、无需网络）。
+    /// 从缓存取封面：先内存后磁盘；内存命中时补写磁盘（原子只认 content:// 落盘文件）。
     private fun getCachedCover(artUrl: String): Bitmap? {
-        coverMemoryCache[artUrl]?.let { return it }
+        coverMemoryCache[artUrl]?.let { bmp ->
+            if (!bmp.isRecycled) {
+                putCoverCache(artUrl, bmp)
+                return bmp
+            }
+            coverMemoryCache.remove(artUrl)
+        }
         val cacheFile = coverCacheFile(artUrl) ?: return null
-        if (cacheFile.exists()) {
+        if (cacheFile.exists() && cacheFile.length() >= 32) {
             return try {
                 val bmp = BitmapFactory.decodeFile(cacheFile.absolutePath)
                 if (bmp != null) {
@@ -1722,9 +1820,10 @@ class AudioPlaybackService : Service() {
     /// 将封面写入磁盘缓存 + 内存缓存；超过上限时清理最旧文件。
     private fun putCoverCache(artUrl: String, bmp: Bitmap) {
         try {
+            if (bmp.isRecycled) return
             coverMemoryCache[artUrl] = bmp
             val cacheFile = coverCacheFile(artUrl) ?: return
-            if (!cacheFile.exists()) {
+            if (!cacheFile.exists() || cacheFile.length() < 32) {
                 FileOutputStream(cacheFile).use { out ->
                     bmp.compress(Bitmap.CompressFormat.JPEG, 88, out)
                     out.flush()
@@ -1773,6 +1872,7 @@ class AudioPlaybackService : Service() {
     /// 原子端会剥掉 bitmap，只拉 ALBUM_ART_URI；网易/汽水 CDN 无 Referer 常 403，
     /// **禁止**把原始 https CDN 塞进 session（只能 content://）。
     /// 禁止 file:// 回退：跨进程原子端读不到，Glide 会崩。
+    /// [readyBmp]：刚解码的图；若磁盘尚无文件则先落盘再发 content://。
     private var lastGrantedCoverUri: String? = null
     /** 上次注入媒体3会话的封面 URI / mediaId，开屏同封面跳过重注 */
     @Volatile
@@ -1780,21 +1880,37 @@ class AudioPlaybackService : Service() {
     @Volatile
     private var lastInjectedSessionMediaId: String = ""
 
-    private fun coverUriForSession(artUrl: String?): String? {
+    private fun coverUriForSession(artUrl: String?, readyBmp: Bitmap? = null): String? {
         if (artUrl.isNullOrEmpty()) return null
         if (artUrl.startsWith("content://")) return artUrl
-        // 绝不把 file:// / https 交给原子
-        if (artUrl.startsWith("file://") ||
-            artUrl.startsWith("http://") ||
-            artUrl.startsWith("https://")
-        ) {
-            // http 需先落盘；已缓存则转 content://
-        } else if (!artUrl.startsWith("/")) {
+        val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
+        // 有现成 bitmap 先落盘（内存命中但磁盘缺失是网易/汽水无封面的主因）
+        val bmp = readyBmp?.takeIf { !it.isRecycled }
+            ?: coverMemoryCache[key]?.takeIf { !it.isRecycled }
+            ?: coverMemoryCache[artUrl]?.takeIf { !it.isRecycled }
+        if (bmp != null) {
+            putCoverCache(key, bmp)
+            if (key != artUrl) putCoverCache(artUrl, bmp)
+        } else if (artUrl.startsWith("file://") || artUrl.startsWith("/")) {
+            // Dart 下发的本地缓存 file://：拷进 cover_cache 再 FileProvider
+            val path = if (artUrl.startsWith("file://")) {
+                Uri.parse(artUrl).path ?: artUrl.removePrefix("file://")
+            } else artUrl
+            try {
+                val src = File(path)
+                if (src.exists() && src.length() >= 32) {
+                    val decoded = BitmapFactory.decodeFile(src.absolutePath)
+                    if (decoded != null) {
+                        putCoverCache(key, decoded)
+                    }
+                }
+            } catch (_: Exception) {}
+        } else if (!artUrl.startsWith("http://") && !artUrl.startsWith("https://")) {
             return null
         }
-        val key = CoverHttp.normalizeUrl(artUrl) ?: artUrl
         val file = coverCacheFile(key) ?: coverCacheFile(artUrl)
         if (file == null || !file.exists() || file.length() < 32) {
+            Log.w(TAG, "coverUriForSession: 无落盘封面 key=$key")
             return null
         }
         return try {
@@ -1807,14 +1923,7 @@ class AudioPlaybackService : Service() {
             // 同 URI 已授权过则跳过，避免进后台反复 grant 打爆权限表
             if (uriStr == lastGrantedCoverUri) return uriStr
             val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
-            for (pkg in listOf(
-                "com.android.systemui",
-                "com.vivo.upslide",
-                "com.vivo.musicwidgetmix",
-                "com.vivo.originui",
-                "com.bbk.launcher2",
-                "com.vivo.launcher",
-            )) {
+            for (pkg in ATOMIC_COVER_GRANT_PKGS) {
                 try {
                     grantUriPermission(pkg, uri, flags)
                 } catch (_: Exception) {
@@ -2092,15 +2201,15 @@ class AudioPlaybackService : Service() {
             // 息屏再开：同一首歌已有封面则跳过重下，避免网易无 Referer 超时拖垮主线程/线程池。
             if (sameArt && reuseBitmap != null && !reuseBitmap.isRecycled) {
                 Log.d(TAG, "封面未变，跳过重下 effectiveArtUrl=$effectiveArtUrl")
-                // 息屏再开同封面：只在尚无 content:// 会话封面时补一次，避免开屏反复 replaceMediaItem
-                val sessionArtUri = coverUriForSession(effectiveArtUrl)
+                // 息屏再开同封面：补落盘 + content://，避免网易/汽水只剩内存图导致原子无封面
+                val sessionBmp = lastArtThumb?.takeIf { !it.isRecycled } ?: reuseBitmap
+                val sessionArtUri = coverUriForSession(effectiveArtUrl, sessionBmp)
                 if (sessionArtUri != null &&
                     sessionArtUri == lastInjectedSessionArtUri &&
                     requestMediaId == lastInjectedSessionMediaId
                 ) {
                     Log.d(TAG, "会话封面未变，跳过重注 uri=$sessionArtUri")
                 } else {
-                    val sessionBmp = lastArtThumb?.takeIf { !it.isRecycled } ?: reuseBitmap
                     AudioPlayer.updateActiveSessionMetadata(
                         requestMediaId,
                         requestGeneration,
@@ -2147,12 +2256,13 @@ class AudioPlaybackService : Service() {
                         MusicWidgetProvider.cachedArtwork = resizeBitmap(displayBitmap, 200)
                         MusicWidgetProvider.notifyArtworkChanged(this@AudioPlaybackService)
 
-                        // 封面同步注入 just_audio 的媒体3 会话（该会话无封面，播放中会被 SystemUI
-                        // 提为控制中心顶层）。用官方 replaceMediaItem 同 uri 替换当前 MediaItem，
-                        // 只更新 metadata 不打断播放，保证控制中心/媒体3通知栏选中媒体3 会话时也有封面。
-                        // 原子端剥 bitmap 只认 ALBUM_ART_URI：下发 content:// + 小缩略图。
-                        // 大图进 Binder 在 vivo 上会拖死 SystemUI / 原子随身听（进后台卡机崩）。
-                        val sessionArtUri = coverUriForSession(effectiveArtUrl)
+                        // 原子端剥 bitmap 只认 ALBUM_ART_URI：必须 content://（带 Referer 下好后落盘）。
+                        // 禁止 https：网易/汽水 CDN 被原子 Glide 无 Referer 拉取 → 403 空白；
+                        // 酷狗 CDN 常能直链所以「只有酷狗有封面」。大图 Binder 仍会卡死原子。
+                        val cacheKey = CoverHttp.normalizeUrl(effectiveArtUrl) ?: effectiveArtUrl
+                        putCoverCache(cacheKey, displayBitmap)
+                        if (cacheKey != effectiveArtUrl) putCoverCache(effectiveArtUrl, displayBitmap)
+                        val sessionArtUri = coverUriForSession(effectiveArtUrl, displayBitmap)
                         val sessionBmp = lastArtThumb?.takeIf { !it.isRecycled } ?: displayBitmap
                         AudioPlayer.updateActiveSessionMetadata(
                             requestMediaId,

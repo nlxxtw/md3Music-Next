@@ -152,8 +152,8 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
     float orbitDepth = controller.getOrbitDepth();
     float phaseStep =
         orbit && sampleRate > 0 ? (float) (2.0 * Math.PI * orbitHz / sampleRate) : 0f;
-    // Haas / ITD ≈ 0.6ms：够听出左右绕转，又不至于严重梳状
-    int maxItd = Math.max(2, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 1600));
+    // Haas / ITD ≈ 0.75ms：方位更清晰，仍避免严重梳状
+    int maxItd = Math.max(2, Math.min(ORBIT_DELAY_LEN - 1, sampleRate / 1300));
 
     for (int i = 0; i < BLOCK; i++) {
       float wetL = timeBuf[i] + overlapL[i];
@@ -161,20 +161,24 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
       float wetR = timeBufR[i] + overlapR[i];
       overlapR[i] = timeBufR[i + BLOCK];
 
-      // EchoMusic complementary: dry*(1-m)+wet*m — then orbit the sum so dry
-      // cannot freeze the image in the center.
-      float mixL = dry * inBlockL[i] + wet * wetL;
-      float mixR = dry * inBlockR[i] + wet * wetR;
+      // Dry stays centered (vocal clarity). Only the wet/IR image orbits for 360.
+      float dryL = dry * inBlockL[i];
+      float dryR = dry * inBlockR[i];
+      float wetOutL = wet * wetL;
+      float wetOutR = wet * wetR;
 
       if (orbit) {
         orbitPhase += phaseStep;
         if (orbitPhase > (float) (2.0 * Math.PI)) {
           orbitPhase -= (float) (2.0 * Math.PI);
         }
-        float[] orb = applyOrbit(mixL, mixR, orbitPhase, orbitDepth, maxItd);
-        mixL = orb[0];
-        mixR = orb[1];
+        float[] orb = applyOrbit(wetOutL, wetOutR, orbitPhase, orbitDepth, maxItd);
+        wetOutL = orb[0];
+        wetOutR = orb[1];
       }
+
+      float mixL = dryL + wetOutL;
+      float mixR = dryR + wetOutR;
 
       // Stereo-linked soft limit (EchoMusic LinkedLimiter idea)
       float peak = Math.max(Math.abs(mixL), Math.abs(mixR)) * gain;
@@ -189,35 +193,51 @@ public final class ConvolutionAudioProcessor extends BaseAudioProcessor {
   }
 
   /**
-   * Classic 8D-style orbit: constant-power pan of mid + short Haas ITD.
-   * depth≈1 → clear L↔R run; side partially kept so it does not turn to mush.
+   * 360 surround orbit: circular L↔R with a mild rear (behind-head) darkening cue.
+   * Operates on the wet path only — dry vocals stay centered in the mixer.
+   *
+   * <p>depth controls how far the wet image swings (0.55–0.8 recommended).
+   * Higher depth with dry still in the mix gives surround without mushy vocals.
    */
   private float[] applyOrbit(float inL, float inR, float phase, float depth, int maxItd) {
+    // Circular motion: sin = azimuth L/R, cos = front(+) / rear(−)
     float pan = (float) Math.sin(phase); // -1 left … +1 right
+    float front = (float) Math.cos(phase); // +1 front … -1 rear
     float angle = (pan + 1f) * (float) (Math.PI / 4.0);
     float gL = (float) Math.cos(angle);
     float gR = (float) Math.sin(angle);
-    // Restore center level: at pan=0, gL=gR=√2/2 → *√2 keeps mid unity
     final float SQRT2 = 1.41421356f;
 
+    // Soften extreme ping-pong: compress pan extremes slightly
+    float d = depth * 0.88f;
+
     float mid = 0.5f * (inL + inR);
-    float side = 0.5f * (inL - inR) * (1f - depth * 0.65f);
+    // Keep more side information so stereo width of the IR survives orbit
+    float side = 0.5f * (inL - inR) * (1f - d * 0.45f);
     float orbL = mid * gL * SQRT2 + side;
     float orbR = mid * gR * SQRT2 - side;
 
-    float d = depth;
+    // Rear-hemisphere cue: slightly darker + quieter when "behind" the head
+    float rear = front < 0f ? -front : 0f; // 0..1
+    float rearGain = 1f - rear * 0.14f;
+    float rearDark = 1f - rear * 0.22f; // one-pole-ish via mid blend
+    float darkenedMid = mid * rearDark + (orbL + orbR) * 0.5f * (1f - rearDark);
+    orbL = (orbL * (1f - rear * 0.35f) + darkenedMid * gL * SQRT2 * rear * 0.35f) * rearGain;
+    orbR = (orbR * (1f - rear * 0.35f) + darkenedMid * gR * SQRT2 * rear * 0.35f) * rearGain;
+
     orbL = inL * (1f - d) + orbL * d;
     orbR = inR * (1f - d) + orbR * d;
 
-    int dL = pan > 0.05f ? Math.round(pan * maxItd) : 0;
-    int dR = pan < -0.05f ? Math.round(-pan * maxItd) : 0;
+    // Haas / ITD: a touch longer than before for clearer azimuth without combing
+    int dL = pan > 0.04f ? Math.round(pan * maxItd) : 0;
+    int dR = pan < -0.04f ? Math.round(-pan * maxItd) : 0;
     orbitDelayL[orbitDelayWrite] = mid;
     orbitDelayR[orbitDelayWrite] = mid;
     int idxL = orbitDelayWrite - dL;
     if (idxL < 0) idxL += ORBIT_DELAY_LEN;
     int idxR = orbitDelayWrite - dR;
     if (idxR < 0) idxR += ORBIT_DELAY_LEN;
-    float haasMix = 0.35f * depth;
+    float haasMix = 0.28f * d;
     orbL = orbL * (1f - haasMix) + orbitDelayL[idxL] * gL * SQRT2 * haasMix;
     orbR = orbR * (1f - haasMix) + orbitDelayR[idxR] * gR * SQRT2 * haasMix;
     orbitDelayWrite = (orbitDelayWrite + 1) % ORBIT_DELAY_LEN;

@@ -170,27 +170,30 @@ class ConvolutionService extends ChangeNotifier {
     if (!orbit) {
       await _channel.invokeMethod('setOrbit', {
         'enabled': false,
-        'hz': 0.12,
+        'hz': 0.07,
         'depth': 0.0,
       });
       return;
     }
-    var hz = 0.13;
+    // 360 环绕：一圈约 12–18 秒（原先近场 0.16Hz≈6s，左右甩太快）
+    var hz = 0.07;
     if (fileName.contains('深空')) {
-      hz = 0.08;
+      hz = 0.055;
     } else if (fileName.contains('近场')) {
-      hz = 0.16;
+      hz = 0.08;
     } else if (fileName.contains('舞台')) {
-      hz = 0.11;
+      hz = 0.065;
     } else if (fileName.contains('宽景')) {
-      hz = 0.14;
+      hz = 0.06;
+    } else if (fileName.contains('双耳')) {
+      hz = 0.068;
     }
-    // EchoMusic 偏湿；orbit 几乎全湿，位移才听得见
-    await _channel.invokeMethod('setMix', {'wet': 0.92, 'dry': 0.08});
+    // 干声占比抬高 → 歌声更清晰；湿声单独绕转做 360（见 Java processor）
+    await _channel.invokeMethod('setMix', {'wet': 0.74, 'dry': 0.26});
     await _channel.invokeMethod('setOrbit', {
       'enabled': true,
       'hz': hz,
-      'depth': 0.95,
+      'depth': 0.72,
     });
   }
 

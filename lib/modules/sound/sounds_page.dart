@@ -56,7 +56,7 @@ class _SoundsPageState extends State<SoundsPage> {
       final orbit = ConvolutionService.isOrbitPreset(item);
       showToast(
         orbit
-            ? '已应用「${item.name}」· 360环绕（左右绕转）'
+            ? '已应用「${item.name}」· 慢速 360 环绕'
             : '已应用「${item.name}」· 卷积脉冲',
       );
     } catch (e) {
@@ -123,7 +123,7 @@ class _SoundsPageState extends State<SoundsPage> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '内置 ${_conv.presets.length} 个脉冲 · 8D/双耳3D 舞台近场为 360 绕转',
+                    '内置 ${_conv.presets.length} 个脉冲 · 8D/双耳3D 为慢速 360 环绕（约 12–18 秒一圈）',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: cs.onSurfaceVariant,
                         ),
@@ -234,7 +234,7 @@ class _SoundsPageState extends State<SoundsPage> {
               const SizedBox(height: 8),
               Text(
                 ConvolutionService.isOrbitPreset(it)
-                    ? '360 环绕：声像会缓慢左右绕转（建议戴耳机听）。'
+                    ? '360 环绕：声场缓慢绕头一周（约十几秒），干声稳住歌声，建议戴耳机听。'
                     : '通过播放链路内 FIR 卷积加载该脉冲，听感取决于脉冲本身。',
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
