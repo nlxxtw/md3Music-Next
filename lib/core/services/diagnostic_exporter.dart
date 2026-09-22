@@ -231,4 +231,3 @@ class DiagnosticExporter {
   /// 取路径最后一段（兼容 / 与 \ 分隔符）。
   static String _baseName(String path) => path.split(RegExp(r'[\\/]')).last;
 }
-}
