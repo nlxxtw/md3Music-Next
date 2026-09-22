@@ -51,6 +51,7 @@ import 'package:md3music/widgets/apple_lyrics/models/lyric_line.dart';
 import '../../widgets/apple_lyrics/parsers/lyric_parser_chain.dart';
 import '../../widgets/ai_recommend_sheet.dart';
 import '../../widgets/menu_action_cell.dart';
+import '../../widgets/dynamic_cover_view.dart';
 import '../../widgets/player_artwork_image.dart';
 import '../../widgets/player_seek_bar.dart';
 import '../../widgets/player_tab_strip.dart';
@@ -164,6 +165,9 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
   /// 引发无效的 applyImmersiveForOrientation 调用导致系统栏闪烁。
   Size? _lastPhysicalSize;
 
+  // 专辑动态封面（设置→播放，默认开启）
+  bool _dynamicCoverEnabled = true;
+
   // ── Zen Mode：长按专辑封面进入/退出沉浸模式 ──
   bool _zenMode = false;
   // 长按封面进入 Zen 模式开关（设置→播放，默认开启；关闭后禁用长按）
@@ -276,7 +280,15 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
       context.read<PlayerProvider>().addListener(_onPlayerSongChanged);
       _loadSpectrumSetting();
       _loadZenPressSetting();
+      _loadDynamicCoverSetting();
     });
+  }
+
+  /// 从设置加载「专辑动态封面」开关（默认开启）。
+  Future<void> _loadDynamicCoverSetting() async {
+    final enabled = await SettingsRepository().getDynamicAlbumCover();
+    if (!mounted || enabled == _dynamicCoverEnabled) return;
+    setState(() => _dynamicCoverEnabled = enabled);
   }
 
   /// 从设置加载「长按封面进入 Zen 模式」开关。
@@ -441,6 +453,9 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
 
   void _onPlayerSongChanged() {
     if (!mounted) return;
+    // 设置页可能改过动态封面开关 → 切歌时同步一次
+    // ignore: discarded_futures
+    _loadDynamicCoverSetting();
     final player = context.read<PlayerProvider>();
     final song = player.currentSong;
     if (song != null && song.id != _lastSongId) {
@@ -2099,6 +2114,24 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
     final textSpacing = isExpanded ? 8.0 : 24.0;
     final iconSize = isExpanded ? 48.0 : 64.0;
 
+    Widget spectrumArt() => _wrapWithDynamicCover(
+          currentSong,
+          SpectrumArtwork(
+            key: ValueKey(currentSong.id),
+            artworkUri: currentSong.artworkUri,
+            fallbackFilePath: currentSong.localPath,
+            isPlaying: playerProvider.isPlaying,
+            bandCount: SpectrumService.instance.bandCount,
+            style: _spectrumStyle,
+            barColor: _spectrumColor,
+            opacity: _spectrumOpacity,
+            showBars: _spectrumEnabled && _spectrumStyle < 2,
+            rotationDuration: (_spectrumEnabled && _spectrumStyle < 2)
+                ? const Duration(seconds: 8)
+                : const Duration(seconds: 20),
+          ),
+        );
+
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: horizontalPadding,
@@ -2135,21 +2168,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
                           scale: 1.0,
                           duration: const Duration(milliseconds: 500),
                           curve: Curves.easeOutBack,
-                          child: SpectrumArtwork(
-                            key: ValueKey(currentSong.id),
-                            artworkUri: currentSong.artworkUri,
-                            fallbackFilePath: currentSong.localPath,
-                            isPlaying: playerProvider.isPlaying,
-                            bandCount: SpectrumService.instance.bandCount,
-                            style: _spectrumStyle,
-                            barColor: _spectrumColor,
-                            opacity: _spectrumOpacity,
-                            showBars: _spectrumEnabled && _spectrumStyle < 2,
-                            rotationDuration:
-                                (_spectrumEnabled && _spectrumStyle < 2)
-                                ? const Duration(seconds: 8)
-                                : const Duration(seconds: 20),
-                          ),
+                          child: spectrumArt(),
                         ),
                       ),
                     ),
@@ -2161,20 +2180,7 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
             Expanded(
               child: AspectRatio(
                 aspectRatio: 1,
-                child: SpectrumArtwork(
-                  key: ValueKey(currentSong.id),
-                  artworkUri: currentSong.artworkUri,
-                  fallbackFilePath: currentSong.localPath,
-                  isPlaying: playerProvider.isPlaying,
-                  bandCount: SpectrumService.instance.bandCount,
-                  style: _spectrumStyle,
-                  barColor: _spectrumColor,
-                  opacity: _spectrumOpacity,
-                  showBars: _spectrumEnabled && _spectrumStyle < 2,
-                  rotationDuration: (_spectrumEnabled && _spectrumStyle < 2)
-                      ? const Duration(seconds: 8)
-                      : const Duration(seconds: 20),
-                ),
+                child: spectrumArt(),
               ),
             ),
           SizedBox(height: textSpacing),
@@ -2188,6 +2194,21 @@ class _AmStyleFullPlayerState extends State<AmStyleFullPlayer>
           if (!isExpanded) const Spacer(),
         ],
       ),
+    );
+  }
+
+  /// 静态/频谱封面叠加动态封面（仅在线歌曲且设置开启时）。
+  Widget _wrapWithDynamicCover(dynamic currentSong, Widget artwork) {
+    if (currentSong is! Song || !currentSong.isOnline) return artwork;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        artwork,
+        DynamicCoverView(
+          song: currentSong,
+          enabled: _dynamicCoverEnabled,
+        ),
+      ],
     );
   }
 

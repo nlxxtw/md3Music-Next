@@ -156,6 +156,18 @@ class LyricPreferences extends ChangeNotifier {
   /// 级联衰减分母默认（x in 1/x）：每越过一行步长 × 1/x。
   static const double defaultCascadeDecayX = 1.1;
 
+  /// 已播字上浮高度最小值（px）。0 = 完全不上浮。
+  static const double minLiftHeightPx = 0.0;
+
+  /// 已播字上浮高度最大值（px）。
+  static const double maxLiftHeightPx = 10.0;
+
+  /// 已播字上浮高度默认值（px）。
+  static const double defaultLiftHeightPx = 3.0;
+
+  /// 级联错峰是否从当前行开始（默认 true）。
+  static const bool defaultStaggerFromCurrentLine = true;
+
   // ============== 按设备类型的默认值（手机 / Pad） ==============
 
   /// 按设备类型的字号默认：手机 29px，Pad 40px。
@@ -196,6 +208,9 @@ class LyricPreferences extends ChangeNotifier {
   static const String _keyCascadeMaxDelayMs = 'lyric_cascade_max_delay_ms';
   static const String _keyCascadeBaseStepMs = 'lyric_cascade_base_step_ms';
   static const String _keyCascadeDecayX = 'lyric_cascade_decay_x';
+  static const String _keyLiftHeightPx = 'lyric_lift_height_px';
+  static const String _keyStaggerFromCurrentLine =
+      'lyric_stagger_from_current';
 
   // ============== 当前值 ==============
 
@@ -224,6 +239,8 @@ class LyricPreferences extends ChangeNotifier {
   double _cascadeMaxDelayMs = defaultCascadeMaxDelayMs;
   double _cascadeBaseStepMs = defaultCascadeBaseStepMs;
   double _cascadeDecayX = defaultCascadeDecayX;
+  double _liftHeightPx = defaultLiftHeightPx;
+  bool _staggerFromCurrentLine = defaultStaggerFromCurrentLine;
   // 运行时加载成功后填充的 family（仅 custom 模式且加载成功时非 null）
   String? _loadedCustomFontFamily;
   bool _loaded = false;
@@ -279,6 +296,12 @@ class LyricPreferences extends ChangeNotifier {
 
   /// 级联衰减因子（已折算 1/x）。供推进循环直接用。
   double get cascadeStepDecay => 1.0 / _cascadeDecayX;
+
+  /// 已播字上浮高度（px）。渲染侧取负值作为 Y 偏移。
+  double get liftHeightPx => _liftHeightPx;
+
+  /// 级联错峰是否从当前行开始。
+  bool get staggerFromCurrentLine => _staggerFromCurrentLine;
 
   /// 当前生效的 fontFamily（传给 TextPainter 的 TextStyle）：
   /// - [LyricFontSource.system]：返回 null（让 Flutter 走系统字体链）
@@ -345,6 +368,12 @@ class LyricPreferences extends ChangeNotifier {
     _cascadeDecayX =
         (prefs.getDouble(_keyCascadeDecayX) ?? defaultCascadeDecayX)
             .clamp(minCascadeDecayX, maxCascadeDecayX);
+    _liftHeightPx =
+        (prefs.getDouble(_keyLiftHeightPx) ?? defaultLiftHeightPx)
+            .clamp(minLiftHeightPx, maxLiftHeightPx);
+    _staggerFromCurrentLine =
+        prefs.getBool(_keyStaggerFromCurrentLine) ??
+            defaultStaggerFromCurrentLine;
     _loaded = true;
     notifyListeners();
     // 若已配置自定义字体，立即尝试加载（Fire-and-forget，加载完成后会 notifyListeners）
@@ -510,6 +539,25 @@ class LyricPreferences extends ChangeNotifier {
     await prefs.setDouble(_keyCascadeDecayX, _cascadeDecayX);
   }
 
+  /// 设置已播字上浮高度（px）并持久化。
+  Future<void> setLiftHeightPx(double value) async {
+    final clamped = value.clamp(minLiftHeightPx, maxLiftHeightPx);
+    if (clamped == _liftHeightPx) return;
+    _liftHeightPx = clamped;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyLiftHeightPx, _liftHeightPx);
+  }
+
+  /// 设置级联错峰起点（从当前行开始）并持久化。
+  Future<void> setStaggerFromCurrentLine(bool enabled) async {
+    if (_staggerFromCurrentLine == enabled) return;
+    _staggerFromCurrentLine = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyStaggerFromCurrentLine, enabled);
+  }
+
   /// 设置歌词翻译副行显示开关并持久化。
   Future<void> setShowTranslation(bool enabled) async {
     if (_showTranslation == enabled) return;
@@ -627,6 +675,8 @@ class LyricPreferences extends ChangeNotifier {
     _cascadeMaxDelayMs = defaultCascadeMaxDelayMs;
     _cascadeBaseStepMs = defaultCascadeBaseStepMs;
     _cascadeDecayX = defaultCascadeDecayX;
+    _liftHeightPx = defaultLiftHeightPx;
+    _staggerFromCurrentLine = defaultStaggerFromCurrentLine;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyFontSize, _fontSize);
@@ -646,6 +696,8 @@ class LyricPreferences extends ChangeNotifier {
     await prefs.remove(_keyCascadeMaxDelayMs);
     await prefs.remove(_keyCascadeBaseStepMs);
     await prefs.remove(_keyCascadeDecayX);
+    await prefs.remove(_keyLiftHeightPx);
+    await prefs.remove(_keyStaggerFromCurrentLine);
     await prefs.remove(_keyFontSource);
     await prefs.remove(_keyCustomFontPath);
   }

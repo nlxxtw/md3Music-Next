@@ -205,6 +205,12 @@ fn handle_request(mut request: Request, _data_dir: &str) -> Result<(), String> {
         return Ok(());
     }
 
+    // 动态封面媒体代理：绕过模块表，流式转发 mp4。
+    // 安全：仅接受 album_audio_id（服务端自行解析 CDN 直链），不接受任意 URL。
+    if path == "/album/dycover/media" {
+        return crate::modules::dycover::handle_media_proxy(request, &url);
+    }
+
     // ---- body parse ----
     let mut body_bytes: Vec<u8> = Vec::new();
     {

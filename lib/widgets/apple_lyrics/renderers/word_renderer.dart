@@ -92,7 +92,11 @@ class WordRenderer {
   List<double> _wordYOffsets = const <double>[];
 
   /// AMLL 上浮最大幅度（px）：当前字最大上浮 -3px。
-  static const double _maxLiftPx = -3.0;
+  /// 已播字上浮幅度（px，向上为负）。
+  ///
+  /// 由用户在设置页"歌词动画 → 已播字上浮高度"调节
+  /// （[LyricPreferences.liftHeightPx]，默认 3.0）。0 = 完全不上浮。
+  static double get _maxLiftPx => -LyricPreferences.instance.liftHeightPx;
 
   /// AMLL 上浮 ATTACK 速度：当前字上浮指数衰减系数。
   static const double _liftAttackSpeed = 30.0;

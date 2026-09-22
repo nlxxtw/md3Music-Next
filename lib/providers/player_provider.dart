@@ -38,6 +38,7 @@ import 'kugou_provider.dart';
 import '../services/kugou_api/kugou_api_client.dart';
 import '../services/kugou_api/kugou_models.dart';
 import '../services/discovery_api/discovery_api_client.dart';
+import 'playback_request_gate.dart';
 import 'position_rewind_gate.dart';
 
 enum AppLoopMode { off, one, all }
@@ -356,6 +357,22 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 换源装载期间的「位置回退闸门」（见 [_updatePosition]、[PositionRewindGate]）。
   final PositionRewindGate _positionRewindGate = PositionRewindGate();
 
+  /// 播放请求闸门：切歌/暂停后，旧的异步解析或 ready 等待不得再调用 play。
+  final PlaybackRequestGate _playbackRequestGate = PlaybackRequestGate();
+
+  int _issuePlaybackRequest() {
+    _positionRewindGate.disarm();
+    return _playbackRequestGate.issue();
+  }
+
+  void _invalidatePlaybackRequest() {
+    _positionRewindGate.disarm();
+    _playbackRequestGate.invalidate();
+  }
+
+  bool _isPlaybackRequestCurrent(int request) =>
+      _playbackRequestGate.isCurrent(request);
+
   @visibleForTesting
   PositionRewindGate get positionRewindGateForTest => _positionRewindGate;
 
@@ -477,6 +494,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   // —— 播放状态持久化 ——
   final _stateRepo = PlayerStateRepository();
   bool _stateRestored = false;
+  // 「记忆播放状态」开关（默认开启）。关闭时：冷启动不恢复上次播放、
+  // 不再写游标/队列持久化数据；开启瞬间起重新开始积累。
+  bool _restoreMemoryEnabled = true;
   // 保存防抖计时器：避免 positionStream 每 200ms 都写磁盘
   Timer? _saveDebounce;
 
@@ -605,6 +625,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       // 恢复音质降级提示开关（重启后保留用户选择）
       _showQualityDowngradeToast =
           await SettingsRepository().getShowQualityDowngradeToast();
+      // 恢复「记忆播放状态」开关（关闭时不恢复也不保存播放进度）
+      _restoreMemoryEnabled =
+          await SettingsRepository().getRestoreMemoryEnabled();
       // 恢复上次播放状态
       await _restoreState();
     } catch (e) {}
@@ -801,6 +824,21 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  /// 「记忆播放状态」开关：关闭即清除已保存的播放状态并停止写入；
+  /// 重新开启后从下一次保存开始积累（冷启动恢复随之生效）。
+  Future<void> setRestoreMemoryEnabled(bool value) async {
+    _restoreMemoryEnabled = value;
+    notifyListeners();
+    if (!value) {
+      try {
+        await _stateRepo.clearState();
+      } catch (_) {}
+    }
+    try {
+      await SettingsRepository().setRestoreMemoryEnabled(value);
+    } catch (_) {}
+  }
+
   Future<dynamic> _loadAudioService() async {
     return AudioServiceLoader.load();
   }
@@ -835,6 +873,11 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     if (_stateRestored) return;
     _stateRestored = true;
     try {
+      // 开关关闭：不恢复上次播放，并清除历史持久化数据，避免残留旧状态
+      if (!_restoreMemoryEnabled) {
+        await _stateRepo.clearState();
+        return;
+      }
       final state = await _stateRepo.restoreState();
       if (state == null) return;
 
@@ -888,6 +931,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 防抖保存播放状态：positionStream 每 200ms 触发一次，
   /// 用 3 秒防抖避免频繁写磁盘，仅保存关键字段。
   void _scheduleSave() {
+    if (!_restoreMemoryEnabled) return;
     _saveDebounce?.cancel();
     _saveDebounce = Timer(const Duration(seconds: 3), _saveState);
   }
@@ -897,6 +941,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// 只写当前歌/索引/位置/模式等小字段，不再全量序列化播放队列；
   /// 队列本体仅在结构变化时由 [_savePlaylistIfChanged] 持久化。
   void _saveState() {
+    if (!_restoreMemoryEnabled) return;
     _saveDebounce?.cancel();
     try {
       _stateRepo.saveCursor(
@@ -913,6 +958,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   ///
   /// 队列序列化在后台 isolate 执行，主线程零 JSON 开销。
   void _savePlaylistIfChanged() {
+    if (!_restoreMemoryEnabled) return;
     try {
       _stateRepo.savePlaylist(_playlist);
       _saveState();

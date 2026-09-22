@@ -213,6 +213,7 @@ class KugouAlbumBrief {
   final String? artistName;
   final String? globalCollectionId;
   final String? numericId;
+  final int? year;
 
   const KugouAlbumBrief({
     required this.id,
@@ -221,9 +222,42 @@ class KugouAlbumBrief {
     this.artistName,
     this.globalCollectionId,
     this.numericId,
+    this.year,
   });
 
+  /// 兼容新碟上架测试与 UI 层对 `artist` 字段名的访问（与 artistName 等价）。
+  String get artist => artistName ?? '';
+
   factory KugouAlbumBrief.fromJson(Map<String, dynamic> json) {
+    final rawCover = _resolveArtworkUri(
+      json['imgurl'] ??
+          json['cover_url'] ??
+          json['img'] ??
+          json['pic'] ??
+          json['ImgUrl'] ??
+          json['cover'] ??
+          json['sizable_cover'] ??
+          json['album_cover'],
+    );
+
+    // 年份：优先 publish_time（秒级时间戳），否则从日期字符串取前 4 位。
+    int? year;
+    final publishTime = json['publish_time'];
+    if (publishTime is num && publishTime > 0) {
+      year = DateTime.fromMillisecondsSinceEpoch(publishTime.toInt() * 1000).year;
+    } else {
+      final publishDate = _cleanName(
+        json['publish_date'] ??
+            json['publishtime'] ??
+            json['pub_time'] ??
+            json['publishDate'],
+      );
+      if (publishDate.length >= 4) {
+        final y = int.tryParse(publishDate.substring(0, 4));
+        if (y != null) year = y;
+      }
+    }
+
     return KugouAlbumBrief(
       id: _str(
         json['albumid'] ??
@@ -237,25 +271,23 @@ class KugouAlbumBrief {
             json['AlbumName'] ??
             json['albumname'] ??
             json['name'] ??
+            json['title'] ??
             '',
       ),
-      coverUrl: _resolveArtworkUri(
-        json['imgurl'] ??
-            json['cover_url'] ??
-            json['img'] ??
-            json['pic'] ??
-            json['ImgUrl'],
-      ),
+      coverUrl: rawCover,
       artistName: _cleanName(
         json['singername'] ??
             json['artist_name'] ??
             json['SingerName'] ??
-            json['author_name'],
+            json['author_name'] ??
+            json['singer'] ??
+            json['artist'],
       ),
       globalCollectionId: _strNull(json['global_collection_id'] ?? json['gid']),
       numericId: _strNull(
         json['albumid'] ?? json['album_id'] ?? json['AlbumID'],
       ),
+      year: year,
     );
   }
 
@@ -267,6 +299,7 @@ class KugouAlbumBrief {
       artworkUri: coverUrl,
       songCount: 0,
       globalCollectionId: globalCollectionId,
+      year: year,
     );
   }
 }

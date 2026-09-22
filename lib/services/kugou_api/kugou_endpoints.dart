@@ -221,6 +221,10 @@ class KugouEndpoints {
 
   // Sound (社区音效/蝰蛇音效)
   static const String soundModel = '/get/model';
+  static const String effectBrand = '/effects/brand';
+  static const String effectBrandDetail = '/effects/brand/detail';
+  static const String effectMatch = '/effects/match';
+  static const String effectArtist = '/effects/artist';
 
   // Import (外部歌单导入)
   static const String importPlaylist = '/import/playlist';
@@ -237,6 +241,10 @@ class KugouEndpoints {
   static const String albumDetail = '/album/detail';
   static const String albumSongs = '/album/songs';
   static const String albumShop = '/album/shop';
+  /// 专辑动态封面（短视频）元数据。
+  static const String albumDyCover = '/album/dycover';
+  /// 专辑动态封面媒体代理（本地回环流式转发 CDN mp4；仅接受 album_audio_id）。
+  static const String dyCoverMedia = '/album/dycover/media';
   static const String artistLists = '/artist/lists';
   static const String artistHonour = '/artist/honour';
 }

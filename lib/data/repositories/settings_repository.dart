@@ -452,6 +452,21 @@ class SettingsRepository {
     await prefs.setDouble(_keyUiScale, scale);
   }
 
+  // ===== 系统音效 =====
+  static const String _keyDisableSystemAudioEffects =
+      'settings_disable_system_audio_effects';
+
+  /// 是否禁用本应用挂载的 Android 系统音效链，默认关闭。
+  Future<bool> getDisableSystemAudioEffects() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyDisableSystemAudioEffects) ?? false;
+  }
+
+  Future<void> setDisableSystemAudioEffects(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDisableSystemAudioEffects, value);
+  }
+
   // ===== 暂停淡入淡出 =====
   static const String _keyPauseFadeEnabled = 'settings_pause_fade_enabled';
 
@@ -866,6 +881,49 @@ class SettingsRepository {
   Future<void> setShowQualityDowngradeToast(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowQualityDowngradeToast, value);
+  }
+
+  // ===== 记忆播放状态 =====
+  static const String _keyRestoreMemory = 'settings_restore_memory';
+
+  /// 「记忆播放状态」开关，默认开启。
+  /// 开启时冷启动恢复上次播放的歌曲与进度；关闭后不恢复、
+  /// 不再写入持久化播放状态，并清除已保存的数据（见 PlayerProvider）。
+  Future<bool> getRestoreMemoryEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyRestoreMemory) ?? true;
+  }
+
+  Future<void> setRestoreMemoryEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyRestoreMemory, value);
+  }
+
+  // ===== 专辑动态封面 =====
+  static const String _keyDynamicAlbumCover = 'settings_dynamic_album_cover';
+  static const String _keyDynamicAlbumCoverOnMobile =
+      'settings_dynamic_album_cover_on_mobile';
+
+  /// 全屏播放器专辑动态封面开关，默认开启。
+  Future<bool> getDynamicAlbumCover() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyDynamicAlbumCover) ?? true;
+  }
+
+  Future<void> setDynamicAlbumCover(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDynamicAlbumCover, value);
+  }
+
+  /// 移动网络下是否也加载动态封面，默认关闭。
+  Future<bool> getDynamicAlbumCoverOnMobile() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyDynamicAlbumCoverOnMobile) ?? false;
+  }
+
+  Future<void> setDynamicAlbumCoverOnMobile(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDynamicAlbumCoverOnMobile, value);
   }
 
   // ===== 车机模式 =====

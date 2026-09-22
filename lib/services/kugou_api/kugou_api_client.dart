@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/kugou_account.dart';
 import '../../data/models/mv_models.dart';
+import '../../data/models/dy_cover_models.dart';
 import 'kugou_endpoints.dart';
 import 'kugou_models.dart';
 
@@ -3458,6 +3459,43 @@ class KugouApiClient {
     }
   }
 
+  /// 专辑动态封面元信息。
+  ///
+  /// `/album/dycover` 由 Rust 以标准版身份（appid=1005/clientver=20489）转发到
+  /// kmrcdn；专辑无动态封面时返回 null（上游该条目为 `{}`，属正常情况不报错）。
+  Future<DyCoverInfo?> getAlbumDyCover(
+    String albumAudioId, {
+    String? albumId,
+  }) async {
+    final json = await getAlbumDyCoverRaw(albumAudioId, albumId: albumId);
+    if (json == null) return null;
+    try {
+      return DyCoverInfo.fromResponse(json, albumAudioId: albumAudioId);
+    } catch (e) {
+      print('[API getAlbumDyCover] parse error: $e');
+      return null;
+    }
+  }
+
+  /// 专辑动态封面的**原始响应**。
+  ///
+  /// 与 [getAlbumDyCover] 的区别在于 null 的语义：本方法返回 null 表示**请求失败**
+  /// （回环服务器未就绪 / 上游不可达 / 非 200），而 [getAlbumDyCover] 返回 null 还可能是
+  /// 「该专辑确实没有动态封面」。
+  Future<Map<String, dynamic>?> getAlbumDyCoverRaw(
+    String albumAudioId, {
+    String? albumId,
+  }) async {
+    if (albumAudioId.trim().isEmpty) return null;
+    return _get(
+      KugouEndpoints.albumDyCover,
+      queryParameters: {
+        'album_audio_id': albumAudioId,
+        if (albumId != null && albumId.isNotEmpty) 'album_id': albumId,
+      },
+    );
+  }
+
   Future<KugouAlbumSongs?> getAlbumSongs(
     String albumId, {
     int page = 1,
@@ -3739,6 +3777,50 @@ class KugouApiClient {
     return await _get(
       KugouEndpoints.soundModel,
       queryParameters: {'sort': sort, 'page': page, 'pagesize': pagesize},
+    );
+  }
+
+  /// 耳机品牌列表。
+  Future<Map<String, dynamic>?> getEffectBrands({
+    int sort = 1,
+    int page = 1,
+    int pagesize = 30,
+  }) async {
+    return await _get(
+      KugouEndpoints.effectBrand,
+      queryParameters: {'sort': sort, 'page': page, 'pagesize': pagesize},
+    );
+  }
+
+  /// 指定耳机品牌的型号/音效列表。
+  Future<Map<String, dynamic>?> getEffectBrandDetail({
+    required int brandId,
+    int page = 1,
+    int pagesize = 30,
+  }) async {
+    return await _get(
+      KugouEndpoints.effectBrandDetail,
+      queryParameters: {
+        'brand_id': brandId,
+        'page': page,
+        'pagesize': pagesize,
+      },
+    );
+  }
+
+  /// 通用耳机/当前设备匹配音效。
+  Future<Map<String, dynamic>?> getEffectMatch() async {
+    return await _get(KugouEndpoints.effectMatch);
+  }
+
+  /// 明星定制音效列表。
+  Future<Map<String, dynamic>?> getArtistEffects({
+    int page = 1,
+    int pagesize = 30,
+  }) async {
+    return await _get(
+      KugouEndpoints.effectArtist,
+      queryParameters: {'page': page, 'pagesize': pagesize},
     );
   }
 

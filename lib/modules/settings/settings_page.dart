@@ -123,8 +123,15 @@ class _SettingsPageState extends State<SettingsPage>
   bool _enable32bitOutput = false;
   // 长按封面进入/退出 Zen 模式开关（默认开启）
   bool _zenCoverLongPress = true;
+  // 专辑动态封面开关（主开关默认开启；移动网络子开关默认关闭）
+  bool _dynamicAlbumCover = true;
+  bool _dynamicAlbumCoverOnMobile = false;
   // 音质降级提示开关（默认关闭）：所选音质不可用自动降级时弹出提示
   bool _showQualityDowngradeToast = false;
+  // 记忆播放状态开关（默认开启）：冷启动恢复上次播放的歌曲与进度
+  bool _restoreMemoryEnabled = true;
+  // 禁用本应用挂载的 Android 系统音效链，避免与手机厂商音效叠加后播放音乐炸音
+  bool _disableSystemAudioEffects = false;
   // 设备 Android SDK 版本（SuperLyricApi 3.4 要求 API 26+，低于此禁用该协议选项）
   int? _androidSdkVersion;
   /// SuperLyric 是否受支持：API 26+（Android 8.0+）。未知时默认放行，避免误禁用。
@@ -360,8 +367,15 @@ class _SettingsPageState extends State<SettingsPage>
     final uploadListeningDuration =
         await _settingsRepository.getUploadListeningDuration();
     final zenCoverLongPress = await _settingsRepository.getZenCoverLongPress();
+    final dynamicAlbumCover = await _settingsRepository.getDynamicAlbumCover();
+    final dynamicAlbumCoverOnMobile =
+        await _settingsRepository.getDynamicAlbumCoverOnMobile();
     final showQualityDowngradeToast = await _settingsRepository
         .getShowQualityDowngradeToast();
+    final restoreMemoryEnabled =
+        await _settingsRepository.getRestoreMemoryEnabled();
+    final disableSystemAudioEffects = await _settingsRepository
+        .getDisableSystemAudioEffects();
 
     setState(() {
       _wifiQuality = wifiQuality;
@@ -401,7 +415,11 @@ class _SettingsPageState extends State<SettingsPage>
       _ignoreAudioFocus = ignoreAudioFocus;
       _audioFocusInterruptionMode = audioFocusInterruptionMode;
       _zenCoverLongPress = zenCoverLongPress;
+      _dynamicAlbumCover = dynamicAlbumCover;
+      _dynamicAlbumCoverOnMobile = dynamicAlbumCoverOnMobile;
       _showQualityDowngradeToast = showQualityDowngradeToast;
+      _restoreMemoryEnabled = restoreMemoryEnabled;
+      _disableSystemAudioEffects = disableSystemAudioEffects;
       // 启动时把音量均衡设置同步给播放器（当前曲目若已加载会自动重算）
       AudioService().setVolumeNormalization(
         enabled: volumeNormalizationEnabled,
@@ -1484,6 +1502,32 @@ class _SettingsPageState extends State<SettingsPage>
             context.read<ThemeProvider>().setLyricDoubleTapToJump(v);
           },
         ),
+        // 全屏播放器专辑封面播放专辑动态封面短视频（MD/AM 两种风格通用）
+        // search: 动态封面 专辑封面 短视频 全屏播放器 封面动画
+        SwitchListTile(
+          title: const Text('专辑动态封面'),
+          subtitle: const Text('全屏播放器封面播放专辑动态封面短视频'),
+          value: _dynamicAlbumCover,
+          onChanged: (value) {
+            HapticFeedback.lightImpact();
+            setState(() => _dynamicAlbumCover = value);
+            _settingsRepository.setDynamicAlbumCover(value);
+          },
+        ),
+        // 动态封面单首约 9.5MB，默认仅 Wi-Fi 自动加载；开启后移动网络也会加载
+        // search: 动态封面 移动网络 流量 蜂窝 wifi
+        SwitchListTile(
+          title: const Text('移动网络下加载动态封面'),
+          subtitle: const Text('动态封面单首约 9.5MB，开启后移动网络也会加载'),
+          value: _dynamicAlbumCoverOnMobile,
+          onChanged: _dynamicAlbumCover
+              ? (value) {
+                  HapticFeedback.lightImpact();
+                  setState(() => _dynamicAlbumCoverOnMobile = value);
+                  _settingsRepository.setDynamicAlbumCoverOnMobile(value);
+                }
+              : null,
+        ),
         // ③ MD3 风格专属：歌手写真背景 + 其从属的间隔 / 透明度
         _buildGroupLabel('NextMusic 风格', colorScheme),
         // search: 写真 背景 轮播
@@ -2173,40 +2217,85 @@ class _SettingsPageState extends State<SettingsPage>
             context.read<PlayerProvider>().setShowQualityDowngradeToast(value);
           },
         ),
+        // search: 记忆 播放状态 恢复 上次播放 播放进度 断点 续播 冷启动
+        SwitchListTile(
+          title: const Text('记忆播放状态'),
+          subtitle: const Text('冷启动恢复上次播放的歌曲与进度；关闭后不再记忆'),
+          value: _restoreMemoryEnabled,
+          onChanged: (value) {
+            HapticFeedback.lightImpact();
+            setState(() => _restoreMemoryEnabled = value);
+            context.read<PlayerProvider>().setRestoreMemoryEnabled(value);
+          },
+        ),
         ListenableBuilder(
           listenable: EqualizerService.instance,
           builder: (context, _) {
             final eq = EqualizerService.instance;
+            final effectsDisabled =
+                _disableSystemAudioEffects || eq.systemEffectsDisabled;
             // search: eq 均衡
             return ListTile(
+              enabled: !effectsDisabled,
               leading: Icon(
                 Icons.graphic_eq,
-                color: eq.enabled
-                    ? Theme.of(context).colorScheme.primary
-                    : null,
+                color: effectsDisabled
+                    ? Theme.of(context).colorScheme.onSurface.withValues(
+                        alpha: 0.38,
+                      )
+                    : (eq.enabled
+                        ? Theme.of(context).colorScheme.primary
+                        : null),
               ),
               title: const Text('均衡器'),
-              subtitle: Text(eq.enabled ? '已开启 · ${eq.currentPreset}' : '未开启'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EqualizerSettingsPage(),
-                ),
+              subtitle: Text(
+                eq.systemEffectsDisabled
+                    ? '系统音效已禁用'
+                    : (eq.enabled ? '已开启 · ${eq.currentPreset}' : '未开启'),
               ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: effectsDisabled
+                  ? null
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EqualizerSettingsPage(),
+                      ),
+                    ),
             );
+          },
+        ),
+        // search: 禁用系统音效 手机厂商 音效叠加 爆音 均衡器
+        SwitchListTile(
+          title: const Text('禁用App均衡器和音效'),
+          subtitle: const Text('避免与手机厂商音效叠加后播放音乐炸音；会停用本应用均衡器和音效库'),
+          value: _disableSystemAudioEffects,
+          onChanged: (value) {
+            HapticFeedback.lightImpact();
+            setState(() => _disableSystemAudioEffects = value);
+            EqualizerService.instance.setSystemEffectsDisabled(value);
           },
         ),
         // —— 蝰蛇/社区音效（浏览与下载 .irs 音效文件）——
         // search: 蝰蛇 音效 社区音效 sound model irs
         ListTile(
-          leading: const Icon(Icons.spatial_audio_off),
+          enabled: !_disableSystemAudioEffects,
+          leading: Icon(
+            Icons.spatial_audio_off,
+            color: _disableSystemAudioEffects
+                ? Theme.of(context).colorScheme.onSurface.withValues(
+                    alpha: 0.38,
+                  )
+                : null,
+          ),
           title: const Text('音效库'),
           trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SoundsPage()),
-          ),
+          onTap: _disableSystemAudioEffects
+              ? null
+              : () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SoundsPage()),
+                ),
         ),
         // —— 音量均衡（响度归一）——
         // search: 音量均衡 响度归一 响度 均衡 参考响度 LUFS 安静歌 放大 峰值

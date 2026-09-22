@@ -14,7 +14,9 @@ pub mod audio_more;
 pub mod comment_more;
 pub mod comment_music;
 pub mod everyday;
+pub mod effects;
 pub mod extras;
+pub mod dycover;
 pub mod fm;
 pub mod get_model;
 pub mod images;
@@ -83,6 +85,10 @@ pub fn register(routes: &mut Vec<(&'static str, ModuleFn)>) {
     routes.push(("/login", login::handle_login));
     routes.push(("/get/verify/info", verify::handle_get_verify_info));
     routes.push(("/get/model", get_model::handle));
+    routes.push(("/effects/brand/detail", effects::handle_brand_detail));
+    routes.push(("/effects/brand", effects::handle_brand));
+    routes.push(("/effects/match", effects::handle_match));
+    routes.push(("/effects/artist", effects::handle_artist));
     routes.push(("/import/playlist", import_playlist::handle));
     routes.push(("/verify/user/info", verify::handle_verify_user_info));
     routes.push(("/ai/recommend", extras::handle_ai_recommend));
@@ -211,6 +217,7 @@ pub fn register(routes: &mut Vec<(&'static str, ModuleFn)>) {
     routes.push(("/album/detail", album::handle_album_detail));
     routes.push(("/album/songs", album::handle_album_songs));
     routes.push(("/album/shop", album::handle_album_shop));
+    routes.push(("/album/dycover", dycover::handle_dycover));
     routes.push(("/album", album::handle_album));
     routes.push(("/captcha/sent", misc::handle_captcha_sent));
     routes.push(("/favorite/count", misc::handle_favorite_count));

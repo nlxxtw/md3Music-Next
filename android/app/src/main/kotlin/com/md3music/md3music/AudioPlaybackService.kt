@@ -2255,6 +2255,8 @@ class AudioPlaybackService : Service() {
                         // 同步封面到桌面小组件（与通知栏/MediaSession 一致）
                         MusicWidgetProvider.cachedArtwork = resizeBitmap(displayBitmap, 200)
                         MusicWidgetProvider.notifyArtworkChanged(this@AudioPlaybackService)
+                        CoverPlayerWidgetProvider.cachedArtwork = resizeBitmap(displayBitmap, 400)
+                        CoverPlayerWidgetProvider.notifyArtworkChanged(this@AudioPlaybackService)
 
                         // 原子端剥 bitmap 只认 ALBUM_ART_URI：必须 content://（带 Referer 下好后落盘）。
                         // 禁止 https：网易/汽水 CDN 被原子 Glide 无 Referer 拉取 → 403 空白；

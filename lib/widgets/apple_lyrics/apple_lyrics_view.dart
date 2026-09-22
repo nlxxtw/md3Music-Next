@@ -1425,8 +1425,18 @@ class _AppleLyricsViewState extends State<AppleLyricsView>
       // 旧实现 `spring.setPosition(offset, 0)` 是瞬时赋值，切换帧整块歌词
       // 会先向下抖最多一个行距的固定比例、再逐行弹回，形成"两段动画 + 瞬移"。
       // 上一轮残留的弹簧值原样保留，释放时叠加进新起点，保证连续。
-      for (int i = startI; i < endI; i++) {
-        _delayStartTimes[i] = now;
+      // 「错峰从当前行开始」开启时：错峰起点 = 当前行再往上一行（上一行
+      // delay=0 领头回位，当前行带一步延迟跟随），其上方行立即释放（-1），
+      // 不参与「按住等错峰」，随全局滚动同步回位。首行时起点即当前行。
+      if (LyricPreferences.instance.staggerFromCurrentLine) {
+        final int staggerStartLine = math.max(0, _currentLineIndex - 1);
+        for (int i = startI; i < endI; i++) {
+          _delayStartTimes[i] = i < staggerStartLine ? -1 : now;
+        }
+      } else {
+        for (int i = startI; i < endI; i++) {
+          _delayStartTimes[i] = now;
+        }
       }
       // 清除起点以下(视口外/限幅外)与过旧的延迟记录
       _delayStartTimes.removeWhere((k, _) => k < startI);
@@ -1448,6 +1458,10 @@ class _AppleLyricsViewState extends State<AppleLyricsView>
     final double cascadeMaxDelay = LyricPreferences.instance.cascadeMaxDelayMs;
     final double cascadeBaseStep = LyricPreferences.instance.cascadeBaseStepMs;
     final double cascadeDecay = LyricPreferences.instance.cascadeStepDecay;
+    final bool staggerFromCurrent =
+        LyricPreferences.instance.staggerFromCurrentLine;
+    final int staggerStartLine =
+        staggerFromCurrent ? math.max(0, _currentLineIndex - 1) : _cascadeTopLine;
     double delayMs = 0;
     double baseStepMs = cascadeBaseStep;
     final double posYNow = _scrollController.posY;
@@ -1477,7 +1491,10 @@ class _AppleLyricsViewState extends State<AppleLyricsView>
       // 为下一行累加本轮步长；且越过当前行后，步长对本轮下一次使用递减。
       // AMLL 语义：先累加本行（当前行用未衰减步长），再衰减供下一行使用
       // （baseDelay *= 1/1.05），实现"越过当前行后先密后疏、总延迟收敛"。
-      delayMs += baseStepMs;
+      // 「错峰从当前行开始」时：起点行之前不累加 delay，保证领头行 delay=0。
+      if (!staggerFromCurrent || i >= staggerStartLine) {
+        delayMs += baseStepMs;
+      }
       if (i >= _currentLineIndex) {
         baseStepMs *= cascadeDecay;
       }

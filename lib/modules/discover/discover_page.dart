@@ -18,6 +18,7 @@ import '../../widgets/pinchable_grid_view.dart';
 import '../../widgets/scroll_aware_app_bar.dart';
 import '../../widgets/smart_artwork_image.dart';
 import '../../widgets/song_list_item.dart';
+import '../album/album_detail_page.dart';
 import '../charts/charts_page.dart';
 import '../personal_fm/personal_fm_section.dart';
 import '../playlist/playlist_page.dart';
@@ -55,6 +56,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   static const String _kCollapsedScene = 'discover_collapsed_scene';
   static const String _kCollapsedPlaylist = 'discover_collapsed_playlist';
   static const String _kCollapsedRank = 'discover_collapsed_rank';
+  static const String _kCollapsedNewAlbum = 'discover_collapsed_new_album';
 
   bool _isLoading = true;
   String? _error;
@@ -64,6 +66,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   bool _isSceneExpanded = true;
   bool _isPlaylistExpanded = true;
   bool _isRankExpanded = true;
+  bool _isNewAlbumExpanded = true;
 
   /// 顶栏渐变 ScrollController：与 ScrollAwareAppBar 共享，监听滚动 offset
   final ScrollController _scrollController = ScrollController();
@@ -94,6 +97,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
       _isSceneExpanded = !(prefs.getBool(_kCollapsedScene) ?? false);
       _isPlaylistExpanded = !(prefs.getBool(_kCollapsedPlaylist) ?? false);
       _isRankExpanded = !(prefs.getBool(_kCollapsedRank) ?? false);
+      _isNewAlbumExpanded = !(prefs.getBool(_kCollapsedNewAlbum) ?? false);
     });
   }
 
@@ -161,7 +165,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
         kugou.recommendSongs.isNotEmpty ||
         kugou.sceneData != null ||
         kugou.themePlaylistData.isNotEmpty ||
-        kugou.personalFmSongs.isNotEmpty;
+        kugou.personalFmSongs.isNotEmpty ||
+        kugou.topAlbums.isNotEmpty;
   }
 
   Future<void> _loadAllData() async {
@@ -198,6 +203,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         kugou.getThemeMusic(forceRefresh: hasExistingData),
         kugou.getThemePlaylist(forceRefresh: hasExistingData),
         kugou.getIpHome(forceRefresh: hasExistingData),
+        kugou.getTopAlbum(forceRefresh: hasExistingData),
         // 这里 forceRefresh 恒为 true 不是笔误：列表为空才会走到这一句，而空列表
         // 也会盖上新鲜时间戳（上一次请求成功但返回了空），不绕开 5 分钟 TTL 的话
         // 卡片会空着却「新鲜」，下拉也补不回来。
@@ -306,6 +312,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
                         _buildSceneSection(colorScheme),
                         _buildPlaylistSection(colorScheme),
                         _buildRankSection(colorScheme),
+                        _buildNewAlbumSection(colorScheme),
                         const SliverToBoxAdapter(child: SizedBox(height: 80)),
                       ],
                     ),
@@ -788,6 +795,58 @@ class _DiscoverPageState extends State<DiscoverPage> {
       },
     );
   }
+
+  /// 新碟上架：横滑专辑卡，形态与「热门歌单」一致（150 宽 AlbumCard / 190 高）。
+  /// 点击进专辑详情，完整列表在标题右侧的 `›`。
+  /// 接口失败或无数据时整块隐藏，不阻塞其他分区。
+  Widget _buildNewAlbumSection(ColorScheme cs) {
+    return Selector<KugouProvider, List<KugouAlbumBrief>>(
+      selector: (_, kugou) => kugou.topAlbums,
+      builder: (context, albums, _) {
+        if (albums.isEmpty) return const SliverToBoxAdapter(child: SizedBox());
+        return SliverToBoxAdapter(
+          child: _CollapsibleSection(
+            title: '新碟上架',
+            isExpanded: _isNewAlbumExpanded,
+            onToggle: () => _toggleCollapse(
+              prefKey: _kCollapsedNewAlbum,
+              currentlyExpanded: _isNewAlbumExpanded,
+              apply: (v) => _isNewAlbumExpanded = v,
+            ),
+            trailing: IconButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const _NewAlbumBrowsePage()),
+              ),
+              icon: const Icon(Icons.chevron_right),
+            ),
+            child: SizedBox(
+              height: 190,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: albums.length,
+                itemBuilder: (context, i) => Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: SizedBox(
+                    width: 150,
+                    child: AlbumCard(
+                      album: albums[i].toAlbum(),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              AlbumDetailPage(album: albums[i].toAlbum()),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _PlaylistBrowsePage extends StatefulWidget {
@@ -846,6 +905,57 @@ class _PlaylistBrowsePageState extends State<_PlaylistBrowsePage> {
                         ),
                       ),
                     ),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _NewAlbumBrowsePage extends StatefulWidget {
+  const _NewAlbumBrowsePage();
+  @override
+  State<_NewAlbumBrowsePage> createState() => _NewAlbumBrowsePageState();
+}
+
+class _NewAlbumBrowsePageState extends State<_NewAlbumBrowsePage> {
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await context.read<KugouProvider>().getTopAlbum();
+      if (mounted) setState(() => _isLoading = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('新碟上架')),
+      body: _isLoading
+          ? const Center(child: M3ELoadingIndicator())
+          : Selector<KugouProvider, List<KugouAlbumBrief>>(
+              selector: (_, kugou) => kugou.topAlbums,
+              builder: (context, list, _) {
+                if (list.isEmpty) return const Center(child: Text('暂无数据'));
+                return PinchableGridView(
+                  padding: EdgeInsets.fromLTRB(
+                    16, 16, 16, 16 + MediaQuery.paddingOf(context).bottom,
+                  ),
+                  childAspectRatio: 0.8,
+                  spacing: 12,
+                  itemCount: list.length,
+                  itemBuilder: (context, i) => AlbumCard(
+                    album: list[i].toAlbum(),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            AlbumDetailPage(album: list[i].toAlbum()),
+                      ),
+                    ),
+                  ),
                 );
               },
             ),

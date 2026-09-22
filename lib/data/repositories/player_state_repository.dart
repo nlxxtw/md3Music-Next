@@ -114,7 +114,10 @@ class PlayerStateRepository {
         })
         .whereType<Song>()
         .toList();
-    if (playlist == null || playlist.isEmpty) return null;
+    // 队列本体缺失/为空但当前歌存在：降级为「单曲队列」恢复，而不是整块放弃。
+    final effectivePlaylist = (playlist == null || playlist.isEmpty)
+        ? <Song>[currentSong]
+        : playlist;
 
     final currentIndex = prefs.getInt(_keyCurrentIndex) ?? 0;
     final positionMs = prefs.getInt(_keyPosition) ?? 0;
@@ -123,8 +126,8 @@ class PlayerStateRepository {
 
     return PlayerState(
       currentSong: currentSong,
-      playlist: playlist,
-      currentIndex: currentIndex.clamp(0, playlist.length - 1),
+      playlist: effectivePlaylist,
+      currentIndex: currentIndex.clamp(0, effectivePlaylist.length - 1),
       position: Duration(milliseconds: positionMs),
       loopMode: loopMode,
       shuffleEnabled: shuffleEnabled,

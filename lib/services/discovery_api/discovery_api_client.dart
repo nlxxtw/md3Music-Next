@@ -63,7 +63,7 @@ class DiscoveryApiClient {
         .toList();
   }
 
-  /// 搜索歌单：网易走官方 cloudsearch；QQ/汽水在推荐池里按名过滤并尽量补拉。
+  /// 搜索歌单：网易 cloudsearch；QQ client_music_search_songlist；汽水 Luna search/playlist。
   Future<List<DiscoveryPlaylist>> searchPlaylists({
     required String source,
     required String keyword,
@@ -71,25 +71,15 @@ class DiscoveryApiClient {
   }) async {
     final q = keyword.trim();
     if (q.isEmpty) return const [];
-    if (source == 'netease') {
-      return _searchNeteasePlaylists(q, limit: limit);
-    }
-    final recommend = await getRecommend(source);
-    final lower = q.toLowerCase();
-    final hit = recommend
-        .where((p) => p.name.toLowerCase().contains(lower))
-        .take(limit)
-        .toList();
-    if (hit.isNotEmpty) return hit;
-    // 推荐池没命中时再试一次强制刷新后的过滤（汽水/QQ 推荐会变）
-    try {
-      final again = await getRecommend(source);
-      return again
-          .where((p) => p.name.toLowerCase().contains(lower))
-          .take(limit)
-          .toList();
-    } catch (_) {
-      return hit;
+    switch (source) {
+      case 'netease':
+        return _searchNeteasePlaylists(q, limit: limit);
+      case 'qq':
+        return _searchQqPlaylists(q, limit: limit);
+      case 'soda':
+        return _searchSodaPlaylists(q, limit: limit);
+      default:
+        return const [];
     }
   }
 
@@ -140,6 +130,176 @@ class DiscoveryApiClient {
       debugPrint('[DiscoveryApi] netease playlist search failed: $e');
       return const [];
     }
+  }
+
+  /// QQ 官方歌单搜索（c.y.qq.com client_music_search_songlist）。
+  Future<List<DiscoveryPlaylist>> _searchQqPlaylists(
+    String keyword, {
+    int limit = 30,
+  }) async {
+    try {
+      final resp = await _dio.get(
+        'https://c.y.qq.com/soso/fcgi-bin/client_music_search_songlist',
+        queryParameters: {
+          'remoteplace': 'txt.yqq.center',
+          'searchid': '',
+          'page_no': 0,
+          'num_per_page': limit.clamp(1, 50),
+          'query': keyword,
+          'format': 'json',
+          'outCharset': 'utf-8',
+        },
+        options: Options(
+          headers: {
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                    '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://y.qq.com/',
+          },
+          validateStatus: (c) => c != null && c < 500,
+        ),
+      );
+      final root = resp.data is Map ? resp.data as Map : null;
+      final data = root?['data'];
+      final list = data is Map ? (data['list'] as List?) : null;
+      if (list == null) return const [];
+      return list.whereType<Map>().map((raw) {
+        final m = Map<String, dynamic>.from(raw);
+        final creator = m['creator'] is Map
+            ? '${(m['creator'] as Map)['name'] ?? ''}'
+            : '';
+        return DiscoveryPlaylist(
+          id: '${m['dissid'] ?? m['diss_id'] ?? ''}',
+          name: _unescapeHtml('${m['dissname'] ?? m['diss_name'] ?? ''}'),
+          cover: _httpsify('${m['imgurl'] ?? m['cover'] ?? ''}'),
+          trackCount: (m['song_count'] as num?)?.toInt() ??
+              (m['songnum'] as num?)?.toInt() ??
+              0,
+          playCount: (m['listennum'] as num?)?.toInt() ??
+              (m['listen_num'] as num?)?.toInt() ??
+              0,
+          creator: _unescapeHtml(creator),
+          source: 'qq',
+        );
+      }).where((p) => p.id.isNotEmpty && p.name.isNotEmpty).toList();
+    } catch (e) {
+      debugPrint('[DiscoveryApi] qq playlist search failed: $e');
+      return const [];
+    }
+  }
+
+  /// 汽水 Luna PC 歌单搜索。
+  Future<List<DiscoveryPlaylist>> _searchSodaPlaylists(
+    String keyword, {
+    int limit = 30,
+  }) async {
+    try {
+      final resp = await _dio.get(
+        'https://api.qishui.com/luna/pc/search/playlist',
+        queryParameters: {
+          'q': keyword,
+          'cursor': 0,
+          'aid': '386088',
+          'device_platform': 'web',
+          'channel': 'pc_web',
+          'search_method': 'input',
+        },
+        options: Options(
+          headers: {
+            'User-Agent': 'LunaPC/2.1.0(12292405)',
+            'Referer': 'https://api.qishui.com/',
+            'Accept': 'application/json',
+          },
+          validateStatus: (c) => c != null && c < 500,
+        ),
+      );
+      final root = resp.data is Map ? resp.data as Map : null;
+      final groups = (root?['result_groups'] as List?) ?? const [];
+      List? items;
+      for (final g in groups) {
+        if (g is Map && '${g['id']}' == 'playlists') {
+          items = g['data'] as List?;
+          break;
+        }
+      }
+      items ??= groups.isNotEmpty && groups.first is Map
+          ? (groups.first as Map)['data'] as List?
+          : null;
+      if (items == null) return const [];
+      final out = <DiscoveryPlaylist>[];
+      for (final raw in items) {
+        if (raw is! Map) continue;
+        final entity = raw['entity'];
+        final pl = entity is Map ? entity['playlist'] : null;
+        if (pl is! Map) continue;
+        final m = Map<String, dynamic>.from(pl);
+        final id = '${m['id'] ?? ''}';
+        if (id.isEmpty) continue;
+        final owner = m['owner'] is Map ? m['owner'] as Map : null;
+        final stats = m['stats'] is Map ? m['stats'] as Map : null;
+        out.add(
+          DiscoveryPlaylist(
+            id: id,
+            name: '${m['title'] ?? m['name'] ?? ''}',
+            cover: _sodaCoverUrl(m['url_cover']),
+            trackCount: (m['count_tracks'] as num?)?.toInt() ??
+                (stats?['count_visible'] as num?)?.toInt() ??
+                0,
+            playCount: (stats?['count_collected'] as num?)?.toInt() ?? 0,
+            creator: '${owner?['nickname'] ?? owner?['public_name'] ?? ''}',
+            source: 'soda',
+          ),
+        );
+        if (out.length >= limit) break;
+      }
+      return out.where((p) => p.name.isNotEmpty).toList();
+    } catch (e) {
+      debugPrint('[DiscoveryApi] soda playlist search failed: $e');
+      return const [];
+    }
+  }
+
+  /// Luna `url_cover` → 与 musicdl 一致的 douyinpic 裁切图。
+  static String _sodaCoverUrl(dynamic cover) {
+    if (cover is String && cover.trim().isNotEmpty) {
+      return _httpsify(cover.trim());
+    }
+    if (cover is! Map) return '';
+    final uri = '${cover['uri'] ?? ''}'.trim();
+    if (uri.isEmpty) return '';
+    if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      return _httpsify(uri);
+    }
+    final urls = cover['urls'];
+    final base = urls is List && urls.isNotEmpty
+        ? '${urls.first}'
+        : 'https://p3-luna.douyinpic.com/img/';
+    final prefix = '${cover['template_prefix'] ?? 'tplv-b829550vbb'}'.trim();
+    final tpl = prefix.isEmpty ? 'tplv-b829550vbb' : prefix;
+    final root = base.endsWith('/') ? base : '$base/';
+    return _httpsify('$root$uri~$tpl-crop-center:300:300.jpeg');
+  }
+
+  static String _unescapeHtml(String input) {
+    if (input.isEmpty || !input.contains('&')) return input;
+    var s = input
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&nbsp;', ' ');
+    s = s.replaceAllMapped(RegExp(r'&#(\d+);'), (m) {
+      final code = int.tryParse(m.group(1)!);
+      if (code == null || code < 0 || code > 0x10FFFF) return m.group(0)!;
+      return String.fromCharCode(code);
+    });
+    s = s.replaceAllMapped(RegExp(r'&#x([0-9a-fA-F]+);'), (m) {
+      final code = int.tryParse(m.group(1)!, radix: 16);
+      if (code == null || code < 0 || code > 0x10FFFF) return m.group(0)!;
+      return String.fromCharCode(code);
+    });
+    return s;
   }
 
   Future<List<DiscoveryPlaylist>> getRecommend(String source) async {

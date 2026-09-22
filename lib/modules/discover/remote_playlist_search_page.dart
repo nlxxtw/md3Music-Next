@@ -7,7 +7,7 @@ import '../../services/discovery_api/discovery_api_client.dart';
 import '../../widgets/discovery_cover_image.dart';
 import 'remote_playlist_page.dart';
 
-/// 发现页 · 搜索歌单（网易 cloudsearch；QQ/汽水在推荐池按名过滤）。
+/// 发现页 · 搜索歌单（网易 / QQ / 汽水官方搜索）。
 class RemotePlaylistSearchPage extends StatefulWidget {
   final DiscoverMusicSource source;
 
@@ -119,9 +119,7 @@ class _RemotePlaylistSearchPageState extends State<RemotePlaylistSearchPage> {
     if (_query.isEmpty) {
       return Center(
         child: Text(
-          widget.source == DiscoverMusicSource.netease
-              ? '输入关键词搜索歌单'
-              : '输入关键词，在推荐歌单中筛选',
+          '输入关键词搜索歌单',
           style: TextStyle(color: cs.onSurfaceVariant),
         ),
       );

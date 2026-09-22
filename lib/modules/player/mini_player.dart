@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:m3e_core/m3e_core.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/layout/bottom_chrome_scope.dart';
 import '../../core/services/desktop_lyric_service.dart';
 import '../../core/services/media_notification_service.dart';
 import '../../core/theme/motion_constants.dart';
@@ -20,6 +23,50 @@ import 'full_player_route.dart';
 /// 在设置变更后实时响应。
 final ValueNotifier<bool> miniPlayerSwipeSwitchEnabled =
     ValueNotifier<bool>(true);
+
+/// MiniPlayer 内容行的基础左右内边距（dp）。
+///
+/// 有底部导航栏、无需圆角防护时使用；也作为圆角反解值的下限。
+const double kMiniPlayerBaseSideInset = 4.0;
+
+/// 底部净空下限（dp）。
+const double kMiniPlayerMinBottomClearance = 12.0;
+
+/// 圆角反解出的左右内边距上限（dp），防止异常大的上报值把内容挤成一条。
+const double kMiniPlayerMaxHorizontalClearance = 24.0;
+
+/// `MediaQueryData.displayCornerRadii` 不可用时采用的保守下屏角半径（dp）。
+const double kMiniPlayerFallbackCornerRadius = 28.0;
+
+/// MiniPlayer 在「自身即屏幕最底部」时的圆角防护留白。
+typedef MiniPlayerCornerClearance = ({double bottom, double horizontal});
+
+/// 计算 MiniPlayer **自身就是屏幕最底部元素** 时所需的圆角防护留白。
+MiniPlayerCornerClearance resolveMiniPlayerCornerClearance(MediaQueryData mq) {
+  final bottom = math.max(mq.viewPadding.bottom, kMiniPlayerMinBottomClearance);
+  final radius = _bottomCornerRadius(mq.displayCornerRadii);
+  final eaten =
+      radius <= 0 ? 0.0 : _cornerEatenWidth(radius: radius, height: bottom);
+  final horizontal = math.min(
+    math.max(kMiniPlayerBaseSideInset, eaten.ceilToDouble()),
+    kMiniPlayerMaxHorizontalClearance,
+  );
+  return (bottom: bottom, horizontal: horizontal);
+}
+
+double _bottomCornerRadius(BorderRadius? radii) {
+  if (radii == null) return kMiniPlayerFallbackCornerRadius;
+  return math.max(
+    math.max(radii.bottomLeft.x, radii.bottomLeft.y),
+    math.max(radii.bottomRight.x, radii.bottomRight.y),
+  );
+}
+
+double _cornerEatenWidth({required double radius, required double height}) {
+  final inner = radius - height;
+  if (inner <= 0) return 0.0;
+  return radius - math.sqrt(radius * radius - inner * inner);
+}
 
 /// 底部常驻迷你播放条。
 ///
@@ -342,6 +389,17 @@ class _MiniPlayerState extends State<MiniPlayer>
     );
   }
 
+  /// 判定口径见 [BottomChromeScope]：有底部 chrome 时保持原行为（底部补
+  /// `padding.bottom`、左右 4dp），否则按 [resolveMiniPlayerCornerClearance]
+  /// 同时防圆角与系统手势条。
+  MiniPlayerCornerClearance _clearance(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    if (BottomChromeScope.hasBottomChromeOf(context)) {
+      return (bottom: mq.padding.bottom, horizontal: kMiniPlayerBaseSideInset);
+    }
+    return resolveMiniPlayerCornerClearance(mq);
+  }
+
   Widget _buildContent(
     BuildContext context,
     PlayerProvider playerProvider,
@@ -349,21 +407,20 @@ class _MiniPlayerState extends State<MiniPlayer>
     ColorScheme colorScheme,
     bool useBackgroundImage,
   ) {
+    final clearance = _clearance(context);
     return Container(
       // Container 在外提供整体背景色：
       // 默认使用 surfaceContainerHigh 比 NavigationBar 的 surface 更深，
       // 形成明确的层级关系（mini player 浮于内容之上，NavigationBar 之下）
       // 启用自定义背景时改用半透明 surface，透出底层背景图。
-      // 颜色会自然填充 SafeArea 在底部留出的系统手势条区域
+      // 颜色会自然填充底部净空（圆角防护 + 系统手势条）区域
       decoration: BoxDecoration(
         color: useBackgroundImage
             ? colorScheme.surface.withValues(alpha: 0.2)
             : colorScheme.surfaceContainerHigh,
       ),
-      child: SafeArea(
-        // 仅吸收底部系统手势条/Home Indicator 高度
-        top: false,
-        bottom: true,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: clearance.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -385,8 +442,10 @@ class _MiniPlayerState extends State<MiniPlayer>
               },
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              padding: EdgeInsets.symmetric(
+                horizontal: clearance.horizontal,
+                vertical: 2,
+              ),
               child: Row(
                 children: [
                   // —— 滑动区：封面 + 歌曲信息，跟随手指平移 + 切歌过渡 ——
