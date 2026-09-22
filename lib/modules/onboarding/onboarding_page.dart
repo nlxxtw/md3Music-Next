@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/motion_constants.dart';
 import '../../providers/theme_provider.dart';
+import '../player/car_mode_panel.dart';
 import 'onboarding_content.dart';
 
 /// 首次启动引导页。
@@ -24,7 +25,7 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, CarModePanelSuppressor<OnboardingPage> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
   late final AnimationController _pageAnimController;
@@ -35,6 +36,7 @@ class _OnboardingPageState extends State<OnboardingPage>
   @override
   void initState() {
     super.initState();
+    suppressCarModePanel();
     _pageAnimController = AnimationController(
       vsync: this,
       duration: M3ExpressiveMotion.emphasisDuration,
@@ -46,6 +48,7 @@ class _OnboardingPageState extends State<OnboardingPage>
   void dispose() {
     _pageController.dispose();
     _pageAnimController.dispose();
+    releaseCarModePanel();
     super.dispose();
   }
 

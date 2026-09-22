@@ -68,9 +68,11 @@ import 'providers/shortcut_config_provider.dart';
 import 'providers/tab_config_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/comment_display_provider.dart';
+import 'providers/car_mode_provider.dart';
 import 'providers/discover_source_provider.dart';
 import 'services/kugou_server.dart';
 import 'widgets/dlna_casting_overlay.dart';
+import 'modules/player/car_mode_panel.dart';
 
 /// 主页（`/`）专用的 [MaterialPageRoute] 子类。
 ///
@@ -166,6 +168,8 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DlnaProvider()),
         // 评论显示设置（字号等）
         ChangeNotifierProvider(create: (_) => CommentDisplayProvider()),
+        // 车机模式（常驻播放器面板的开关 / 宽度 / 停靠位置）
+        ChangeNotifierProvider(create: (_) => CarModeProvider()),
         // 发现页音源：酷狗 / QQ / 汽水
         ChangeNotifierProvider(create: (_) => DiscoverSourceProvider()),
         // 可选扩展：私有构建注入的额外 Provider（默认无）
@@ -385,7 +389,12 @@ class _AppViewState extends State<_AppView> {
                 // 全局背景层（主页/底层背景）：复用 AppBackground 组件。
                 // 二级页面由路由过渡内嵌 AppBackground，随页面位移入场。
                 Positioned.fill(child: AppBackground()),
-                child!,
+                // 车机模式：把整棵 Navigator 与常驻播放器面板并排。
+                // 必须包在 Navigator **之外**（就是这里）——面板要同时覆盖
+                // push 出来的所有二级页面，放进任何路由内部都覆盖不到。
+                // 未开启车机模式（或当前页面声明抑制）时本组件原样返回 child，
+                // 布局与改动前完全一致。
+                CarModePanel(child: child!),
                 const DlnaCastingOverlay(),
                 // 上滑拖拽跟手覆盖层（在 Navigator 之上，拖拽期间显示预览）
                 const PlayerDragOverlay(),

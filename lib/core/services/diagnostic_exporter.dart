@@ -24,10 +24,28 @@ import 'media_store_service.dart';
 class DiagnosticExporter {
   DiagnosticExporter._();
 
+  static const MethodChannel _diagnosticChannel = MethodChannel(
+    'com.md3music.md3music/diagnostic_log',
+  );
+
   /// 收集信息并构建 zip 报告，返回 zip 文件。
   static Future<File> buildReport() async {
     final logger = DiagnosticLogger.instance;
-    // 1. 确保缓冲中的日志全部落盘
+    logger.i('开始导出诊断日志');
+
+    // 1. 先收集 Android 原生日志
+    String androidLogs = '';
+    if (!kIsWeb && Platform.isAndroid) {
+      try {
+        androidLogs =
+            await _diagnosticChannel.invokeMethod<String>('getAndroidLogs') ??
+            '';
+      } catch (e) {
+        logger.w('Android 原生日志导出失败: $e');
+      }
+    }
+
+    // 2. 确保缓冲中的日志全部落盘
     await logger.flush();
 
     final logDir = logger.logDir;
@@ -36,16 +54,24 @@ class DiagnosticExporter {
     final workDir = Directory('${tmpRoot.path}/diagnostic_report_$stamp')
       ..createSync(recursive: true);
 
-    // 2. 复制日志目录内全部文件（app.log / app.log.N / native_crash_*.txt）
+    // 3. 复制日志目录内全部文件（app.log / app.log.N / native_crash_*.txt）
     if (logDir != null && logDir.existsSync()) {
       for (final entity in logDir.listSync()) {
         if (entity is File) {
-          entity.copySync('${workDir.path}/${_baseName(entity.path)}');
+          try {
+            entity.copySync('${workDir.path}/${_baseName(entity.path)}');
+          } catch (_) {}
         }
       }
     }
 
-    // 3. 生成设备/应用概览
+    if (androidLogs.isNotEmpty) {
+      File(
+        '${workDir.path}/android.log',
+      ).writeAsStringSync(androidLogs, flush: true);
+    }
+
+    // 4. 生成设备/应用概览
     final infoText = await _collectInfoText();
     File('${workDir.path}/diagnostic_info.txt')
         .writeAsStringSync(infoText, flush: true);
@@ -204,4 +230,5 @@ class DiagnosticExporter {
 
   /// 取路径最后一段（兼容 / 与 \ 分隔符）。
   static String _baseName(String path) => path.split(RegExp(r'[\\/]')).last;
+}
 }

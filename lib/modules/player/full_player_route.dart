@@ -8,6 +8,7 @@ import '../../core/theme/motion_constants.dart';
 import '../../data/models/song.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/car_mode_provider.dart';
 import '../../utils/landscape_immersive.dart';
 import 'full_player.dart';
 import 'full_player_am.dart';
@@ -58,6 +59,11 @@ DraggablePlayerRoute? activePlayerRoute;
 
 /// 统一打开全屏播放页：已在栈中则回退到它，禁止重复 push（上游 v5.6）。
 void openFullPlayer(BuildContext context) {
+  // 车机模式：播放器已常驻在侧边面板，任何「打开全屏播放页」的入口都忽略。
+  // 否则会在面板之外再 push 一个播放页 —— 两个实例各自驱动歌词/进度等动画，
+  // 整页帧率翻倍。
+  if (context.read<CarModeProvider>().enabled) return;
+
   final NavigatorState navigator = Navigator.of(context);
   final DraggablePlayerRoute? existing = activePlayerRoute;
   if (existing != null) {

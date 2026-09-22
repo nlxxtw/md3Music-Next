@@ -11,6 +11,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../providers/favorites_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/car_mode_provider.dart';
 import '../../widgets/smart_artwork_image.dart';
 import 'full_player_route.dart';
 
@@ -278,6 +279,11 @@ class _MiniPlayerState extends State<MiniPlayer>
     final currentSong = playerProvider.currentSong;
 
     if (currentSong == null) return const SizedBox.shrink();
+
+    // 车机模式：常驻侧边面板，不再显示 MiniPlayer
+    if (context.watch<CarModeProvider>().enabled) {
+      return const SizedBox.shrink();
+    }
 
     final colorScheme = Theme.of(context).colorScheme;
     // 公开版偏好：启用自定义背景时，MiniPlayer 用半透明背景透出背景图

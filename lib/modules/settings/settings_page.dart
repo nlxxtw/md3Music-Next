@@ -24,6 +24,7 @@ import '../../core/utils/app_toast.dart';
 import '../../core/services/desktop_lyric_service.dart';
 import '../../core/services/app_update_service.dart';
 import '../../core/services/equalizer_service.dart';
+import '../../core/services/listen_report_service.dart';
 import '../../core/services/lyricon_provider_service.dart';
 import '../../core/services/media_notification_service.dart';
 import '../../core/services/media_store_service.dart';
@@ -46,6 +47,9 @@ import 'lyric_animation_settings_page.dart';
 import '../../widgets/seed_color_picker.dart';
 import '../../widgets/usb_exclusive_section.dart';
 import '../player/mini_player.dart';
+import '../player/car_mode_layout.dart';
+import '../player/car_mode_panel.dart';
+import '../../providers/car_mode_provider.dart';
 import '../sound/sounds_page.dart';
 import 'equalizer_settings_page.dart';
 import 'settings_search_index.g.dart';
@@ -75,7 +79,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, CarModePanelSuppressor<SettingsPage> {
   final SettingsRepository _settingsRepository = SettingsRepository();
   String _wifiQuality = '128';
   String _mobileQuality = '128';
@@ -186,6 +190,8 @@ class _SettingsPageState extends State<SettingsPage>
   @override
   void initState() {
     super.initState();
+    // 本页不显示车机模式常驻播放器面板
+    suppressCarModePanel();
     // 页面切换过渡控制器：fade 0→1。切换流程 = 先 reverse 淡出旧页 →
     // 完成回调中切换内容 → 再 forward 淡入新页（严格串行，不重叠）。
     // 每段 120ms（总 ~240ms），过渡轻快。
@@ -210,6 +216,7 @@ class _SettingsPageState extends State<SettingsPage>
     _searchController.dispose();
     LyriconProviderService.instance.removeListener(_onLyriconStateChanged);
     DesktopLyricService.instance.removeListener(_onDesktopLyricChanged);
+    releaseCarModePanel();
     super.dispose();
   }
 
@@ -559,6 +566,7 @@ class _SettingsPageState extends State<SettingsPage>
             onAutoPause: () => context.read<PlayerProvider>().pause(),
           ),
         ),
+        ('车机模式', Icons.directions_car_outlined, _buildCarModeSection),
         ('主页管理', Icons.tab_outlined, _buildTabManagementSection),
         (
           '桌面快捷方式',
@@ -2005,6 +2013,85 @@ class _SettingsPageState extends State<SettingsPage>
     }
   }
 
+  /// 「车机模式」分区：常驻播放器面板的开关与外观参数。
+  Widget _buildCarModeSection(ColorScheme colorScheme) {
+    final carMode = context.watch<CarModeProvider>();
+    final ratioPercent = (carMode.panelRatio * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildGroupLabel('常驻播放器', colorScheme, first: true),
+        SwitchListTile(
+          title: const Text('车机模式'),
+          subtitle: const Text('任何界面常驻播放器面板，不再显示 MiniPlayer'),
+          value: carMode.enabled,
+          onChanged: (value) {
+            HapticFeedback.lightImpact();
+            context.read<CarModeProvider>().setEnabled(value);
+          },
+        ),
+        _buildGroupLabel('面板宽度', colorScheme),
+        ListTile(
+          enabled: carMode.enabled,
+          title: const Text('面板宽度'),
+          subtitle: M3ESlider(
+            decoration: const M3ESliderDecoration(
+              haptic: M3EHapticFeedback.medium,
+              hapticConfig: M3EHapticConfig.discrete(),
+            ),
+            value: carMode.panelRatio * 100,
+            min: kCarModePanelMinRatio * 100,
+            max: kCarModePanelMaxRatio * 100,
+            label: '$ratioPercent%',
+            onChanged: (value) => context.read<CarModeProvider>().setPanelRatio(
+              value / 100,
+              persist: false,
+            ),
+            onChangeEnd: (value) =>
+                context.read<CarModeProvider>().setPanelRatio(value / 100),
+          ),
+          trailing: Text('$ratioPercent%'),
+        ),
+        _buildGroupLabel('面板位置', colorScheme),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: M3EToggleButtonGroup(
+            actions: const [
+              M3EToggleButtonGroupAction(
+                label: Text('左侧'),
+                icon: Icon(Icons.align_horizontal_left),
+              ),
+              M3EToggleButtonGroupAction(
+                label: Text('右侧'),
+                icon: Icon(Icons.align_horizontal_right),
+              ),
+            ],
+            selectedIndex: carMode.panelSide == CarModePanelSide.left ? 0 : 1,
+            onSelectedIndexChanged: (index) {
+              if (index == null || !carMode.enabled) return;
+              HapticFeedback.lightImpact();
+              context.read<CarModeProvider>().setPanelSide(
+                index == 0 ? CarModePanelSide.left : CarModePanelSide.right,
+              );
+            },
+          ),
+        ),
+        if (!carMode.enabled)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Text(
+              '开启车机模式后生效',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          )
+        else
+          const SizedBox(height: 16),
+      ],
+    );
+  }
+
   /// 播放 section。
   ///
   /// 排列逻辑：音质与音效（音质 → 解锁高音质的 VIP → 输出音效）→ 播放行为
@@ -2307,6 +2394,9 @@ class _SettingsPageState extends State<SettingsPage>
               _uploadListeningDuration = value;
             });
             _settingsRepository.setUploadListeningDuration(value);
+            if (!value) {
+              ListenReportService.instance.discard();
+            }
           },
         ),
         // ③ 屏幕与视频：都与「播放时的屏幕表现」相关

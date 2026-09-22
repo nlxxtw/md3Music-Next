@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/services/audio_service_io.dart';
 import '../../core/services/volume_normalization_service.dart';
+import '../../modules/player/car_mode_layout.dart';
 import '../../services/kugou_api/kugou_api_client.dart';
 
 class SettingsRepository {
@@ -865,5 +866,51 @@ class SettingsRepository {
   Future<void> setShowQualityDowngradeToast(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyShowQualityDowngradeToast, value);
+  }
+
+  // ===== 车机模式 =====
+  static const String _keyCarModeEnabled = 'settings_car_mode_enabled';
+  static const String _keyCarModePanelRatio = 'settings_car_mode_panel_ratio';
+  static const String _keyCarModePanelSide = 'settings_car_mode_panel_side';
+
+  /// 「车机模式」开关，默认关闭。
+  /// 开启后任何界面（设置页 / 登录页 / 引导页 / 用户协议页除外）常驻一块
+  /// 全屏播放器面板，且全站不再显示 MiniPlayer。
+  Future<bool> getCarModeEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyCarModeEnabled) ?? false;
+  }
+
+  Future<void> setCarModeEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyCarModeEnabled, value);
+  }
+
+  /// 常驻播放器面板的宽度占比（0.20~0.50），默认 0.30。
+  /// 越界值一律夹回合法区间：手改 prefs / 历史脏数据也不会把面板撑爆。
+  Future<double> getCarModePanelRatio() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getDouble(_keyCarModePanelRatio);
+    if (value == null) return kCarModePanelDefaultRatio;
+    return value.clamp(kCarModePanelMinRatio, kCarModePanelMaxRatio);
+  }
+
+  Future<void> setCarModePanelRatio(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(
+      _keyCarModePanelRatio,
+      value.clamp(kCarModePanelMinRatio, kCarModePanelMaxRatio),
+    );
+  }
+
+  /// 常驻播放器面板的停靠位置，默认左侧。
+  Future<CarModePanelSide> getCarModePanelSide() async {
+    final prefs = await SharedPreferences.getInstance();
+    return CarModePanelSide.fromIndex(prefs.getInt(_keyCarModePanelSide));
+  }
+
+  Future<void> setCarModePanelSide(CarModePanelSide side) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyCarModePanelSide, side.index);
   }
 }

@@ -5,6 +5,8 @@ import 'package:md3music/providers/theme_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../player/car_mode_panel.dart';
+
 /// 用户协议页（首次启动展示）。
 ///
 /// 协议正文以静态文本形式内嵌（参考第三方音乐客户端「Hydrogen」协议结构
@@ -78,12 +80,25 @@ class UserAgreementPage extends StatefulWidget {
   }
 }
 
-class _UserAgreementPageState extends State<UserAgreementPage> {
+class _UserAgreementPageState extends State<UserAgreementPage>
+    with CarModePanelSuppressor<UserAgreementPage> {
   bool _agreed = false;
 
   /// SharedPreferences key：标记用户已同意协议。
   /// 设置后下次冷启动不再展示。
   static const String _kAcceptedKey = 'user_agreement_accepted_v1';
+
+  @override
+  void initState() {
+    super.initState();
+    suppressCarModePanel();
+  }
+
+  @override
+  void dispose() {
+    releaseCarModePanel();
+    super.dispose();
+  }
 
   Future<void> _onAgree() async {
     if (!_agreed) return;

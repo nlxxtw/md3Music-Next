@@ -7,6 +7,7 @@ import 'package:m3e_core/m3e_core.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
+import '../../main.dart';
 import '../../core/layout/responsive_layout.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/desktop_lyric_service.dart';
@@ -57,6 +58,7 @@ import '../../widgets/player_playlist_view.dart';
 import '../../widgets/spectrum_artwork.dart';
 import '../../widgets/spectrum_background.dart';
 import 'dlna_cast_sheet.dart';
+import 'car_mode_exit.dart';
 import 'full_player_route.dart';
 
 /// 预加载封面图片到磁盘缓存，防止切换时白屏
@@ -83,7 +85,10 @@ class FullPlayer extends StatefulWidget {
   static void Function(BuildContext context, dynamic song)?
   coverLongPressCallback;
 
-  const FullPlayer({super.key});
+  /// 车机模式：常驻面板嵌入，不可收起 / 不接管系统栏。
+  final bool dockMode;
+
+  const FullPlayer({super.key, this.dockMode = false});
 
   @override
   State<FullPlayer> createState() => _FullPlayerState();
@@ -196,6 +201,7 @@ class _FullPlayerState extends State<FullPlayer>
   double _spectrumCurveOpacity = 1.0;
 
   void _collapseByButton() {
+    if (widget.dockMode) return;
     final route = ModalRoute.of(context);
     if (route is DraggablePlayerRoute) {
       _isDismissing = true;
@@ -208,6 +214,17 @@ class _FullPlayerState extends State<FullPlayer>
     } else {
       Navigator.of(context).maybePop();
     }
+  }
+
+
+  NavigatorState? _pageNavigator(BuildContext context) {
+    if (widget.dockMode) return appNavigatorKey.currentState;
+    return Navigator.of(context);
+  }
+
+  Future<void> _confirmExitCarMode() async {
+    final exited = await confirmExitCarMode(context);
+    if (exited) showToast('已退出车机模式');
   }
 
   // ── 顶栏向下拖拽原路返回（与上滑展开镜像） ──
@@ -332,19 +349,19 @@ class _FullPlayerState extends State<FullPlayer>
     // 先 dismiss FullPlayer，再 push 专辑页。
     // 注意：必须在 dismiss 之前捕获 navigatorState 引用，因为 dismiss 后
     // widget 会被 dispose，State.mounted 变为 false，原来的 if (mounted) 检查会失败。
-    final navigatorState = Navigator.of(context);
+    final navigatorState = _pageNavigator(context);
     final route = ModalRoute.of(context);
     if (route is DraggablePlayerRoute) {
       _isDismissing = true;
       route.dismiss();
       // 等待 FullPlayer 淡出动画完成（约 250ms）后再 push 专辑页
       Future.delayed(const Duration(milliseconds: 300), () {
-        navigatorState.push(
+        navigatorState?.push(
           MaterialPageRoute(builder: (_) => AlbumDetailPage(album: album)),
         );
       });
     } else {
-      navigatorState.push(
+      navigatorState?.push(
         MaterialPageRoute(builder: (_) => AlbumDetailPage(album: album)),
       );
     }
@@ -460,13 +477,13 @@ class _FullPlayerState extends State<FullPlayer>
     }
     // 注意：必须在 dismiss 之前捕获 navigatorState 引用，因为 dismiss 后
     // widget 会被 dispose，State.mounted 变为 false，原来的 if (mounted) 检查会失败。
-    final navigatorState = Navigator.of(context);
+    final navigatorState = _pageNavigator(context);
     final route = ModalRoute.of(context);
     if (route is DraggablePlayerRoute) {
       _isDismissing = true;
       route.dismiss();
       Future.delayed(const Duration(milliseconds: 300), () {
-        navigatorState.push(
+        navigatorState?.push(
           MaterialPageRoute(
             builder: (_) => ArtistDetailPage(
               artistId: artistId,
@@ -477,7 +494,7 @@ class _FullPlayerState extends State<FullPlayer>
         );
       });
     } else {
-      navigatorState.push(
+      navigatorState?.push(
         MaterialPageRoute(
           builder: (_) => ArtistDetailPage(
             artistId: artistId,
@@ -648,7 +665,8 @@ class _FullPlayerState extends State<FullPlayer>
     final width = MediaQuery.sizeOf(context).width;
     final deviceIsPad = isPadLayout(context);
     // 横屏/平板：宽度 >= 600 或设备本身是平板
-    final isWideLayout = deviceIsPad || width >= 600;
+    final isWideLayout =
+        !widget.dockMode && (deviceIsPad || width >= 600);
     // 播放列表为最左 tab（index 0）。
     // 手机竖屏：4 tab [播放列表, 封面, 歌词, 评论]。
     // 横屏/平板（手机横屏、平板竖屏、平板横屏一致）：封面常驻在左栏、
@@ -690,6 +708,9 @@ class _FullPlayerState extends State<FullPlayer>
       // 拖拽覆盖层（非路由）：不切换系统栏，展开后由路由接管
       _dragRoute = null;
       _systemUiModified = false;
+    } else if (widget.dockMode) {
+      _dragRoute = null;
+      _systemUiModified = false;
     } else {
       // 点击打开 / 普通路由：立即应用沉浸模式
       _dragRoute = null;
@@ -710,6 +731,7 @@ class _FullPlayerState extends State<FullPlayer>
       // 引发无效的 applyImmersiveForOrientation 调用导致系统栏闪烁
       if (_lastPhysicalSize == current) return;
       _lastPhysicalSize = current;
+      if (widget.dockMode) return;
       if (_zenMode) {
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       } else {
@@ -817,6 +839,7 @@ class _FullPlayerState extends State<FullPlayer>
   /// 进入 Zen 沉浸模式：隐藏顶栏、控件、系统栏，拓宽歌词/封面视图。
   void _enterZenMode() {
     if (_zenMode) return;
+    if (widget.dockMode) return;
     setState(() => _zenMode = true);
     _zenController.forward();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -894,7 +917,7 @@ class _FullPlayerState extends State<FullPlayer>
   /// 封面长按包装：指针监听 + 按压内缩动效 + Zen 长按引导提示层。
   /// [child] 为原封面内容（含播放/暂停缩放动画）。
   Widget _wrapArtworkZenPress({required Widget child}) {
-    if (!_zenLongPressEnabled) return child;
+    if (!_zenLongPressEnabled || widget.dockMode) return child;
     return Listener(
       onPointerDown: _onArtworkPointerDown,
       onPointerMove: _onArtworkPointerMove,
@@ -1190,12 +1213,13 @@ class _FullPlayerState extends State<FullPlayer>
     return PlayerSystemUiScope(
       dragRoute: _dragRoute,
       // 拖拽覆盖层（非路由）期间系统栏恒为主页面样式
-      forceMainStyle: _isDragOverlay,
+      forceMainStyle: _isDragOverlay || widget.dockMode,
       expandedOverlayStyle: mdOverlayStyle,
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop || _isDismissing) return;
+          if (widget.dockMode) return;
           if (_zenMode) {
             _exitZenMode();
             return;
@@ -1285,10 +1309,10 @@ class _FullPlayerState extends State<FullPlayer>
                   },
                   behavior: HitTestBehavior.opaque,
                   // 封面 tab 与顶栏一样支持向下拖拽原路返回关闭播放器
-                  onVerticalDragStart: _onTopBarDragStart,
-                  onVerticalDragUpdate: _onTopBarDragUpdate,
-                  onVerticalDragEnd: _onTopBarDragEnd,
-                  onVerticalDragCancel: _onTopBarDragCancel,
+                  onVerticalDragStart: widget.dockMode ? null : _onTopBarDragStart,
+                  onVerticalDragUpdate: widget.dockMode ? null : _onTopBarDragUpdate,
+                  onVerticalDragEnd: widget.dockMode ? null : _onTopBarDragEnd,
+                  onVerticalDragCancel: widget.dockMode ? null : _onTopBarDragCancel,
                   child: _buildArtworkView(
                     playerProvider,
                     currentSong,
@@ -1406,10 +1430,10 @@ class _FullPlayerState extends State<FullPlayer>
                                 // 同时保留长按封面进入/退出 Zen 模式（按压内缩 + 引导提示）
                                 child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onVerticalDragStart: _onTopBarDragStart,
-                                  onVerticalDragUpdate: _onTopBarDragUpdate,
-                                  onVerticalDragEnd: _onTopBarDragEnd,
-                                  onVerticalDragCancel: _onTopBarDragCancel,
+                                  onVerticalDragStart: widget.dockMode ? null : _onTopBarDragStart,
+                                  onVerticalDragUpdate: widget.dockMode ? null : _onTopBarDragUpdate,
+                                  onVerticalDragEnd: widget.dockMode ? null : _onTopBarDragEnd,
+                                  onVerticalDragCancel: widget.dockMode ? null : _onTopBarDragCancel,
                                   child: _wrapArtworkZenPress(
                                     child: AnimatedScale(
                                       // 圆形慢转封面不需要暂停缩小动画
@@ -1591,10 +1615,10 @@ class _FullPlayerState extends State<FullPlayer>
                                   // 同时保留长按封面进入/退出 Zen 模式（按压内缩 + 引导提示）
                                   child: GestureDetector(
                                     behavior: HitTestBehavior.opaque,
-                                    onVerticalDragStart: _onTopBarDragStart,
-                                    onVerticalDragUpdate: _onTopBarDragUpdate,
-                                    onVerticalDragEnd: _onTopBarDragEnd,
-                                    onVerticalDragCancel: _onTopBarDragCancel,
+                                    onVerticalDragStart: widget.dockMode ? null : _onTopBarDragStart,
+                                    onVerticalDragUpdate: widget.dockMode ? null : _onTopBarDragUpdate,
+                                    onVerticalDragEnd: widget.dockMode ? null : _onTopBarDragEnd,
+                                    onVerticalDragCancel: widget.dockMode ? null : _onTopBarDragCancel,
                                     child: _wrapArtworkZenPress(
                                         child: AnimatedScale(
                                         // 圆形慢转封面不需要暂停缩小动画
@@ -1713,18 +1737,25 @@ class _FullPlayerState extends State<FullPlayer>
     // 整个顶栏支持向下拖拽原路返回（点击按钮仍由子元素处理，竞技场自动区分）
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
-      onVerticalDragStart: _onTopBarDragStart,
-      onVerticalDragUpdate: _onTopBarDragUpdate,
-      onVerticalDragEnd: _onTopBarDragEnd,
-      onVerticalDragCancel: _onTopBarDragCancel,
+      onVerticalDragStart: widget.dockMode ? null : _onTopBarDragStart,
+      onVerticalDragUpdate: widget.dockMode ? null : _onTopBarDragUpdate,
+      onVerticalDragEnd: widget.dockMode ? null : _onTopBarDragEnd,
+      onVerticalDragCancel: widget.dockMode ? null : _onTopBarDragCancel,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: Row(
           children: [
-            IconButton(
-              icon: const Icon(Icons.keyboard_arrow_down),
-              onPressed: _collapseByButton,
-            ),
+            if (widget.dockMode)
+              IconButton(
+                icon: const Icon(Icons.close_fullscreen),
+                tooltip: '退出车机模式',
+                onPressed: _confirmExitCarMode,
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.keyboard_arrow_down),
+                onPressed: _collapseByButton,
+              ),
             const Spacer(),
             // MD3E v2: 顶部栏右侧 FLAC 质量徽章，点击复用 _showQualityDialog
             _buildQualityPill(playerProvider),
@@ -2583,8 +2614,7 @@ class _FullPlayerState extends State<FullPlayer>
                     title: const Text('查看 MV'),
                     onTap: () {
                       Navigator.pop(sheetContext);
-                      Navigator.push(
-                        rootContext,
+                      _pageNavigator(rootContext)?.push(
                         MaterialPageRoute(
                           builder: (_) => MvPlayerPage(song: song),
                         ),
@@ -2639,8 +2669,7 @@ class _FullPlayerState extends State<FullPlayer>
                   title: const Text('歌曲信息'),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    Navigator.push(
-                      rootContext,
+                    _pageNavigator(rootContext)?.push(
                       MaterialPageRoute(builder: (_) => const SongInfoPage()),
                     );
                   },
@@ -2680,8 +2709,7 @@ class _FullPlayerState extends State<FullPlayer>
                             active: eq.enabled,
                             onTap: () {
                               Navigator.pop(sheetContext);
-                              Navigator.push(
-                                rootContext,
+                              _pageNavigator(rootContext)?.push(
                                 MaterialPageRoute(
                                   builder: (_) => const EqualizerSettingsPage(),
                                 ),
@@ -2696,8 +2724,7 @@ class _FullPlayerState extends State<FullPlayer>
                         active: false,
                         onTap: () {
                           Navigator.pop(sheetContext);
-                          Navigator.push(
-                            rootContext,
+                          _pageNavigator(rootContext)?.push(
                             MaterialPageRoute(
                               builder: (_) => const SoundsPage(),
                             ),

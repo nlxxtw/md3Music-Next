@@ -15,6 +15,8 @@ import '../core/services/desktop_lyric_service.dart';
 import '../core/services/home_widget_service.dart';
 import '../core/services/lyricon_provider_service.dart';
 import '../core/services/listening_grade_service.dart';
+import '../core/services/listen_report_service.dart';
+import '../core/services/playback_duration_tracker.dart';
 import '../core/services/media_notification_service.dart';
 import '../core/services/wakelock_service.dart';
 import '../core/services/media_store_service.dart';
@@ -485,6 +487,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     addListener(_handleLyriconSongChange);
     // 同步「是否正在播放在线歌曲」到听歌等级服务（累计本地听歌时长用）
     addListener(_syncListeningGradeOnline);
+    // CSCC 真实播放事件上报（/user/listen/report）
+    addListener(_handleListenReportSongChange);
+    ListenReportService.instance.setDeviceInfoLoader(_ensureListenReportDeviceInfo);
     // 监听 Lyricon 连接状态：headless 唤醒等场景下 auto_restored/connected
     // 事件到达时可能晚于状态恢复的 notifyListeners，这里补推当前歌曲，
     // 否则词幕不会自动连接显示（PlayerProvider 自己监听自己无法感知 Lyricon 启用）。
@@ -497,15 +502,57 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _syncListeningGradeOnline() {
     final playingOnline = (_currentSong?.isOnline ?? false) && _isPlaying;
     ListeningGradeService.instance.setListeningOnline(playingOnline);
-    // 真实播放上报：在线歌曲开始播放时上传一次播放历史（mxid=album_audio_id）。
-    // 背景：听歌等级/时长对部分账号按"真实播放统计"记账，/user/grade/info 的
-    // diff 差量上报不被服务器记账（实测 status=1/error_code=0 但服务器值不动）。
-    // 上传播放历史即是真实播放信号，让这类账号也能累计听歌时长。按 song.id 去重，
-    // 同一首歌只在重新开始播放时上报一次；best-effort，失败不影响播放。
-    if (playingOnline) {
-      _maybeUploadPlayHistory(_currentSong);
-    }
+    // 听歌时长真实上报已由 CSCC /user/listen/report 接管，
+    // 见 [_handleListenReportSongChange]，此处不再补发播放历史。
   }
+
+  // —— CSCC 真实播放事件上报（`/user/listen/report`）——
+  String? _lastListenReportSongId;
+
+  void _handleListenReportSongChange() {
+    final song = _currentSong;
+    final songId = song?.id;
+    if (songId == _lastListenReportSongId) return;
+
+    if (_lastListenReportSongId != null) {
+      // ignore: discarded_futures
+      ListenReportService.instance.onSongEnded(
+        reason: PlaybackEndReason.switched,
+      );
+    }
+    _lastListenReportSongId = songId;
+
+    if (song == null) return;
+    if (!song.isOnline) return;
+    final mixsongid = song.albumAudioId;
+    if (mixsongid == null || mixsongid.isEmpty) return;
+    // ignore: discarded_futures
+    ListenReportService.instance.onSongStarted(
+      songId: songId!,
+      mixsongid: mixsongid,
+      playing: _isPlaying,
+    );
+  }
+
+  bool _listenReportDeviceInfoSet = false;
+
+  Future<void> _ensureListenReportDeviceInfo() async {
+    if (_listenReportDeviceInfoSet) return;
+    _listenReportDeviceInfoSet = true;
+    try {
+      final summary = await MediaStoreService.getDeviceSummary();
+      if (summary == null) return;
+      final model = '${summary['manufacturer'] ?? ''} ${summary['model'] ?? ''}'
+          .trim();
+      final release = summary['release']?.toString();
+      ListenReportService.instance.setDeviceInfo(
+        deviceModel: model.isEmpty ? null : model,
+        systemVersion: (release == null || release.isEmpty) ? null : release,
+      );
+    } catch (_) {}
+  }
+
+
 
   /// 最近一次已上报播放历史的歌曲 id（避免同一首歌重复上报）。
   String? _lastUploadedPlaySongId;
@@ -962,6 +1009,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       _playingSubscription = _audioService.playingStream.listen((isPlaying) {
         _isPlaying = isPlaying;
         WakelockService.instance.setSongPlaying(isPlaying);
+        ListenReportService.instance.onPlayingChanged(isPlaying);
         // try-catch：_updateNotification 内部（updateWidget 等）异常不应
         // 中断后续，否则暂停时 Kotlin 收不到 isPlaying=false，WakeLock 不释放
         try {
@@ -1085,6 +1133,17 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     _handlingCompletion = true;
     try {
+      final posAtCompletion = _position;
+      final durAtCompletion = _currentSong?.duration ?? Duration.zero;
+      final bool completedAbnormally = posAtCompletion.inMilliseconds > 500 &&
+          durAtCompletion.inSeconds > 0 &&
+          posAtCompletion.inSeconds < durAtCompletion.inSeconds * 0.8;
+      if (!completedAbnormally) {
+        // ignore: discarded_futures
+        ListenReportService.instance.onSongEnded(
+          reason: PlaybackEndReason.completed,
+        );
+      }
       if (_loopMode == AppLoopMode.one) {
         // 单曲循环：检测在线歌曲是否异常结束（URL 过期 / 流中断），
         // 避免无限重播损坏的链接
@@ -1128,6 +1187,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
           _retryingSongId = null;
           seek(Duration.zero);
           _audioService?.play();
+          final loopSong = _currentSong;
+          final loopMixsongid = loopSong?.albumAudioId;
+          if (loopSong != null &&
+              loopSong.isOnline &&
+              loopMixsongid != null &&
+              loopMixsongid.isNotEmpty) {
+            // ignore: discarded_futures
+            ListenReportService.instance.onSongStarted(
+              songId: loopSong.id,
+              mixsongid: loopMixsongid,
+              playing: _isPlaying,
+            );
+          }
         }
       } else if (_currentIndex >= _playlist.length - 1) {
         // 走到这里：当前是最后一首（含单首歌场景），且非 FM、非列表循环
@@ -2566,6 +2638,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     // 拖动进度条：中止淡化（AudioService.seek 内部也会中止，这里同步清掉
     // 预加载状态，避免拖回中段后仍按旧的"即将播完"判定起播下一首）
     _resetCrossfadePrepared();
+    ListenReportService.instance.onSeek();
     // 立即更新位置，让 UI（进度条、歌词行高亮、滚动）即时响应
     // 否则要等 just_audio positionStream 触发，会有一帧的滞后，
     // 导致拖动 slider 后歌词不跟随。
@@ -2944,6 +3017,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> clearPlaylist() async {
+    // ignore: discarded_futures
+    ListenReportService.instance.onSongEnded(
+      reason: PlaybackEndReason.stopped,
+    );
     _resetCrossfadePrepared();
     // 可选扩展：播放源停止回调（默认关闭）
     if (_currentSong != null && _currentSong!.isOnline) {
@@ -3146,6 +3223,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     // 2. 维护当前播放索引
     if (_playlist.isEmpty) {
+      // ignore: discarded_futures
+      ListenReportService.instance.onSongEnded(
+        reason: PlaybackEndReason.stopped,
+      );
       _currentIndex = -1;
       _currentSong = null;
       _isPlaying = false;
@@ -4010,6 +4091,15 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  void _flushListenReportOnExit() {
+    final tracker = ListenReportService.instance.tracker;
+    if (!tracker.isTracking) return;
+    // ignore: discarded_futures
+    ListenReportService.instance.onSongEnded(
+      reason: PlaybackEndReason.stopped,
+    );
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -4022,6 +4112,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       HistoryRepository().flush();
       // 后台失败兜底：切歌失败（挂后台网络受限）时启动周期重试，网络恢复即续播
       _startRetryFailedTimer();
+      if (state == AppLifecycleState.detached) {
+        _flushListenReportOnExit();
+      }
     } else if (state == AppLifecycleState.resumed) {
       // 回到前台：停止兜底定时器，立即重试一次失败的当前歌曲
       _stopRetryFailedTimer();
@@ -4031,6 +4124,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _flushListenReportOnExit();
     _saveState(); // 退出时立即保存
     _saveDebounce?.cancel();
     _connectivitySub?.cancel();
@@ -4038,6 +4132,7 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     _stopRetryFailedTimer();
     WidgetsBinding.instance.removeObserver(this);
     removeListener(_handleLyriconSongChange);
+    removeListener(_handleListenReportSongChange);
     LyriconProviderService.instance.removeListener(_handleLyriconEnabledChanged);
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();

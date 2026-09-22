@@ -283,6 +283,9 @@ class MainActivity : FlutterActivity() {
             // 应用内更新：下载 APK 后调起系统安装器
             ApkInstallerPlugin(this).register(flutterEngine)
 
+            // 诊断报告：导出 Android 原生日志
+            DiagnosticLogPlugin().register(flutterEngine)
+
             // 注册 Miuix 发现页测试通道：Dart 设置页点击后打开原生 Compose + miuix 页面，
             // 并携带本地 Rust API 服务器当前端口（原生页据此直连取数）。
             MethodChannel(
