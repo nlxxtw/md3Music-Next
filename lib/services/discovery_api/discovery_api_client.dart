@@ -47,9 +47,15 @@ class DiscoveryApiClient {
     int page = 1,
     int limit = 20,
   }) async {
-    if (source == 'netease') {
-      return _searchViaQqovo(server: 'netease', source: source, keyword: keyword);
+    // OpenMusic /api：netease / qq(tencent) / soda(qishui) 走 qqovo meting 搜索
+    if (source == 'netease' || source == 'qq' || source == 'soda') {
+      return _searchViaQqovo(
+        server: serverForSource(source),
+        source: source,
+        keyword: keyword,
+      );
     }
+    // 未知源仍回落 musicdl /api/v1/search
     final res = await _dio.get('$baseUrl/api/v1/search', queryParameters: {
       'source': source,
       'q': keyword,
