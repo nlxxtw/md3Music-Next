@@ -24,6 +24,7 @@ import '../../core/utils/app_toast.dart';
 import '../../core/services/desktop_lyric_service.dart';
 import '../../core/services/app_update_service.dart';
 import '../../core/services/equalizer_service.dart';
+import '../../core/services/viper_master_service.dart';
 import '../../core/services/listen_report_service.dart';
 import '../../core/services/lyricon_provider_service.dart';
 import '../../core/services/media_notification_service.dart';
@@ -132,6 +133,8 @@ class _SettingsPageState extends State<SettingsPage>
   bool _restoreMemoryEnabled = true;
   // 禁用本应用挂载的 Android 系统音效链，避免与手机厂商音效叠加后播放音乐炸音
   bool _disableSystemAudioEffects = false;
+  // 蝰蛇母带处理链（10 段 EQ + 限幅，默认关闭）
+  bool _viperMasterEnabled = false;
   // 设备 Android SDK 版本（SuperLyricApi 3.4 要求 API 26+，低于此禁用该协议选项）
   int? _androidSdkVersion;
   /// SuperLyric 是否受支持：API 26+（Android 8.0+）。未知时默认放行，避免误禁用。
@@ -376,6 +379,8 @@ class _SettingsPageState extends State<SettingsPage>
         await _settingsRepository.getRestoreMemoryEnabled();
     final disableSystemAudioEffects = await _settingsRepository
         .getDisableSystemAudioEffects();
+    final viperMasterEnabled =
+        await _settingsRepository.getViperMasterEnabled();
 
     setState(() {
       _wifiQuality = wifiQuality;
@@ -420,6 +425,7 @@ class _SettingsPageState extends State<SettingsPage>
       _showQualityDowngradeToast = showQualityDowngradeToast;
       _restoreMemoryEnabled = restoreMemoryEnabled;
       _disableSystemAudioEffects = disableSystemAudioEffects;
+      _viperMasterEnabled = viperMasterEnabled;
       // 启动时把音量均衡设置同步给播放器（当前曲目若已加载会自动重算）
       AudioService().setVolumeNormalization(
         enabled: volumeNormalizationEnabled,
@@ -2263,6 +2269,18 @@ class _SettingsPageState extends State<SettingsPage>
                       ),
                     ),
             );
+          },
+        ),
+        // search: 蝰蛇 母带 母带处理 限幅 削波 均衡 viper master
+        SwitchListTile(
+          title: const Text('蝰蛇母带处理'),
+          subtitle: const Text('10 段均衡 + 限幅母带链；关闭时输出逐字节透传'),
+          value: _viperMasterEnabled,
+          onChanged: (value) {
+            HapticFeedback.lightImpact();
+            setState(() => _viperMasterEnabled = value);
+            _settingsRepository.setViperMasterEnabled(value);
+            ViperMasterService.instance.setEnabled(value);
           },
         ),
         // search: 禁用系统音效 手机厂商 音效叠加 爆音 均衡器

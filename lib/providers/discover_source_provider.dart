@@ -278,7 +278,17 @@ class DiscoverSourceProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> setSource(DiscoverMusicSource next) async {
+  Future<void> setSource(
+    DiscoverMusicSource next, {
+    bool requireKugouLogin = false,
+    bool Function()? isKugouLoggedIn,
+  }) async {
+    // 未登录酷狗时禁止切到 QQ / 汽水 / 网易（UI 已隐藏，这里做兜底）。
+    if (requireKugouLogin &&
+        next != DiscoverMusicSource.kugou &&
+        !(isKugouLoggedIn?.call() ?? false)) {
+      next = DiscoverMusicSource.kugou;
+    }
     if (_source == next) return;
     _source = next;
     _error = null;
@@ -294,6 +304,12 @@ class DiscoverSourceProvider extends ChangeNotifier {
       _fmLoading = false;
       notifyListeners();
     }
+  }
+
+  /// 未登录时若持久化停在远程音源，收回酷狗。
+  Future<void> ensureSourceAllowed({required bool kugouLoggedIn}) async {
+    if (kugouLoggedIn || isKugou) return;
+    await setSource(DiscoverMusicSource.kugou);
   }
 
   Future<void> setFmMode(String mode) async {

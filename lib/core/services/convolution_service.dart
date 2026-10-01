@@ -51,13 +51,15 @@ class ConvolutionService extends ChangeNotifier {
   String? _appliedFile;
   String? _appliedName;
   bool _enabled = false;
+  bool _suspended = false;
   bool _ready = false;
   Directory? _presetDir;
 
   List<LocalSoundPreset> get presets => List.unmodifiable(_presets);
   String? get appliedFile => _appliedFile;
   String? get appliedName => _appliedName;
-  bool get enabled => _enabled;
+  bool get enabled => _enabled && !_suspended;
+  bool get suspended => _suspended;
   bool get ready => _ready;
   bool get isSupported => !kIsWeb && Platform.isAndroid;
 
@@ -229,6 +231,14 @@ class ConvolutionService extends ChangeNotifier {
     if (enabled && (_appliedFile == null || _appliedFile!.isEmpty)) {
       return;
     }
+    if (_suspended && enabled) {
+      // 挂起期间只记意图，真正推送留给恢复时
+      _enabled = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefsEnabledKey, true);
+      notifyListeners();
+      return;
+    }
     if (enabled) {
       await loadFile(_appliedFile!);
     }
@@ -236,6 +246,27 @@ class ConvolutionService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsEnabledKey, enabled);
     _enabled = enabled;
+    notifyListeners();
+  }
+
+  /// Direct PCM 旁路：挂起时强制关卷积，退出后按用户开关恢复（不改持久化意图）。
+  Future<void> setSuspended(bool value) async {
+    if (!isSupported || _suspended == value) return;
+    _suspended = value;
+    if (value) {
+      try {
+        await _channel.invokeMethod('setEnabled', {'enabled': false});
+      } catch (e) {
+        debugPrint('ConvolutionService suspend failed: $e');
+      }
+    } else if (_enabled && _appliedFile != null && _appliedFile!.isNotEmpty) {
+      try {
+        await loadFile(_appliedFile!);
+        await _channel.invokeMethod('setEnabled', {'enabled': true});
+      } catch (e) {
+        debugPrint('ConvolutionService resume failed: $e');
+      }
+    }
     notifyListeners();
   }
 }

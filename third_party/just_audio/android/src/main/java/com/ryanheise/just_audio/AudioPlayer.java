@@ -984,15 +984,18 @@ public class AudioPlayer implements MethodCallHandler, Player.Listener, Metadata
                 @Override
                 public AudioSink buildAudioSink(
                         Context ctx, boolean enableFloatOutput, boolean enableAudioTrackPlaybackParams) {
-                    // MD3Music fork: inject IRS convolution before USB exclusive wrap.
+                    // MD3Music fork: IRS 卷积 + 蝰蛇母带链（顺序：卷积 → 母带）。
+                    // Direct PCM 包在 USB wrap 之外：configure 记录的是 delegate 实收格式。
                     AudioSink defaultSink = new androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(ctx)
                             .setEnableFloatOutput(enableFloatOutput)
                             .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                            .setAudioProcessors(new androidx.media3.common.audio.AudioProcessor[] {
-                                    new ConvolutionAudioProcessor()
-                            })
+                            .setAudioProcessorChain(
+                                    new androidx.media3.exoplayer.audio.DefaultAudioSink.DefaultAudioProcessorChain(
+                                            new ConvolutionAudioProcessor(),
+                                            new ViperMasterProcessor()))
                             .build();
-                    return UsbAudioSinkController.wrap(defaultSink, ctx);
+                    DirectPcmController.attachContext(ctx);
+                    return new DirectPcmSink(UsbAudioSinkController.wrap(defaultSink, ctx));
                 }
             };
             // MD3Music fork: float 输出曾用于让 24/32bit 高规格音频走高解析，

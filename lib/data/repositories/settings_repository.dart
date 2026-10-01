@@ -544,6 +544,20 @@ class SettingsRepository {
     await prefs.setDouble(_keyVolumeNormalizationLufs, value.clamp(-20.0, -8.0));
   }
 
+  // ===== 蝰蛇母带处理链 =====
+  static const String _keyViperMasterEnabled = 'settings_viper_master_enabled';
+
+  /// 蝰蛇母带处理（10 段 EQ + 限幅母带链），默认关闭。
+  Future<bool> getViperMasterEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyViperMasterEnabled) ?? false;
+  }
+
+  Future<void> setViperMasterEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyViperMasterEnabled, value);
+  }
+
   // ===== 播放时保持屏幕常亮 =====
   static const String _keyKeepScreenOn = 'settings_keep_screen_on';
 

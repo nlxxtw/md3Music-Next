@@ -268,6 +268,9 @@ class MainActivity : FlutterActivity() {
             // 注册均衡器插件：Android 原生 Equalizer，绑定 just_audio 的 audio session ID
             EqualizerPlugin().register(flutterEngine)
 
+            // 蝰蛇母带通道：将母带开关与十段 EQ 增益推到 just_audio 处理链
+            ViperDspPlugin().register(flutterEngine)
+
             // 注册本地 IRS 卷积音效插件（蝰蛇/杜比脉冲包）
             ConvolutionPlugin().register(flutterEngine)
 
@@ -276,6 +279,9 @@ class MainActivity : FlutterActivity() {
 
             // 注册 USB 独占输出插件：MethodChannel + 动态拔插广播 + AudioSink 拦截桥接
             UsbAudioPlugin(this).register(flutterEngine)
+
+            // 系统 Direct PCM（与 USB 独占互斥，由 Dart OutputModeCoordinator 仲裁）
+            DirectPcmPlugin(this).register(flutterEngine)
 
             // 注册 Lyrico 外部编辑插件：本地歌曲经 FileProvider 交给 Lyrico 编辑
             ExternalEditorPlugin(this).register(flutterEngine)

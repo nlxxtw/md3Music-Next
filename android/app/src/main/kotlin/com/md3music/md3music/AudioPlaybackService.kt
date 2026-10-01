@@ -1659,6 +1659,9 @@ class AudioPlaybackService : Service() {
             restoreLyriconStateIfNeeded()
             // 音量均衡通道：headless 引擎同样需要，播放/AudioService 在此 isolate 运行。
             registerVolumeNormalizationChannel(engine)
+            // 蝰蛇母带 / Direct PCM：headless 播放 isolate 也要能推到原生处理链
+            ViperDspPlugin().register(engine)
+            DirectPcmPlugin(applicationContext).register(engine)
             // Lyrico 外部编辑通道：UI 可能复用 headless 引擎，缺了会 MissingPluginException
             ExternalEditorPlugin(applicationContext).register(engine)
         } catch (_: Exception) {}

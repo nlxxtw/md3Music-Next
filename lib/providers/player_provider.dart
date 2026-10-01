@@ -21,6 +21,8 @@ import '../core/services/media_notification_service.dart';
 import '../core/services/wakelock_service.dart';
 import '../core/services/media_store_service.dart';
 import '../core/services/usb_audio_service.dart';
+import '../core/services/direct_pcm_service.dart';
+import '../core/services/output_mode_coordinator.dart';
 import '../data/models/song.dart';
 import '../modules/player/comments_view.dart';
 import '../modules/player/mv_player_page.dart';
@@ -474,6 +476,9 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<just_audio.SequenceState?>? _sequenceStateSubscription;
   StreamSubscription<double>? _speedSubscription;
 
+  /// Direct PCM / USB 两层开关变化监听（回退提示 + unity 音量恢复）。
+  VoidCallback? _outputModeListener;
+
   dynamic _audioService;
   bool _audioInitialized = false;
   /// 音频引擎初始化结束时完成（无论成功或失败），外部调用播放等场景等待它就绪。
@@ -614,6 +619,20 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       // USB 独占关闭后自动恢复 delegate 输出：旧 usb HAL 输出流被独占 force
       // disconnect 杀死，只有重建 AudioTrack（复刻"暂停→重播"）才能重新出声。
       UsbAudioService.instance.onExclusiveDisabled = _handleUsbExclusiveDisabled;
+      UsbAudioService.instance.onExclusiveFailed = (String code, String message) {
+        OutputModeCoordinator.instance.onExclusiveFailed(code, message);
+      };
+      OutputModeCoordinator.instance
+        ..volumeApplier = (double v) async {
+          _volume = v.clamp(0.0, 1.0);
+          await _audioService?.setVolume(_volume);
+        }
+        ..rebuildRequester = _rebuildOutputForModeChange
+        ..unityVolumeApplier = _applyUnityVolumeForDirectPcm;
+      await DirectPcmService.instance.init();
+      await OutputModeCoordinator.instance.init();
+      _outputModeListener = _onOutputModeChanged;
+      OutputModeCoordinator.instance.addListener(_outputModeListener!);
       await _loadDefaultQuality();
       await _syncIgnoreAudioFocus();
       // 恢复「音频焦点中断策略」设置（重启后保留用户选择）
@@ -865,6 +884,44 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
       print('[PlayerProvider] USB exclusive disabled — delegate re-route via pause/play');
     } catch (_) {
       // 静默：恢复失败时用户手动暂停/重播仍可恢复
+    }
+  }
+
+  Future<void> _applyUnityVolumeForDirectPcm() async {
+    try {
+      if (!OutputModeCoordinator.instance.forceUnityVolume) return;
+      final current = _volume;
+      if (current >= 0.999) return;
+      OutputModeCoordinator.instance.rememberUserVolume(current);
+      _volume = 1.0;
+      await _audioService?.setVolume(1.0);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _rebuildOutputForModeChange() async {
+    try {
+      final player = _audioService;
+      if (player == null || !_audioInitialized) return;
+      if (!isPlaying) return;
+      // ignore: avoid_dynamic_calls
+      await player.pause();
+      await Future.delayed(const Duration(milliseconds: 120));
+      // ignore: avoid_dynamic_calls
+      await player.play();
+    } catch (_) {}
+  }
+
+  void _onOutputModeChanged() {
+    final notice = OutputModeCoordinator.instance.consumeFallbackNotice();
+    if (notice != null) {
+      showToast(notice);
+    }
+    if (!OutputModeCoordinator.instance.forceUnityVolume) {
+      final saved = OutputModeCoordinator.instance.takeSavedVolume();
+      if (saved != null) {
+        OutputModeCoordinator.instance.volumeApplier?.call(saved);
+      }
     }
   }
 
@@ -3561,12 +3618,19 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> setVolume(double volume) async {
-    _volume = volume.clamp(0.0, 1.0);
-    await _audioService?.setVolume(_volume);
+    final target = volume.clamp(0.0, 1.0);
+    if (OutputModeCoordinator.instance.forceUnityVolume) {
+      OutputModeCoordinator.instance.rememberUserVolume(target);
+      _volume = 1.0;
+      await _audioService?.setVolume(1.0);
+    } else {
+      _volume = target;
+      await _audioService?.setVolume(_volume);
+    }
     // 持久化应用内音量（重启保留）
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('player_volume', _volume);
+      await prefs.setDouble('player_volume', target);
     } catch (_) {}
     notifyListeners();
   }
@@ -4180,6 +4244,10 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
     removeListener(_handleLyriconSongChange);
     removeListener(_handleListenReportSongChange);
     LyriconProviderService.instance.removeListener(_handleLyriconEnabledChanged);
+    if (_outputModeListener != null) {
+      OutputModeCoordinator.instance.removeListener(_outputModeListener!);
+      _outputModeListener = null;
+    }
     _positionSubscription?.cancel();
     _durationSubscription?.cancel();
     _playingSubscription?.cancel();

@@ -80,10 +80,15 @@ class _DiscoverPageState extends State<DiscoverPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _initIfNeeded();
       _loadCollapseStates();
-      context.read<DiscoverSourceProvider>().load();
+      final ds = context.read<DiscoverSourceProvider>();
+      await ds.load();
+      if (!mounted) return;
+      await ds.ensureSourceAllowed(
+        kugouLoggedIn: context.read<KugouProvider>().isLoggedIn,
+      );
     });
   }
 
@@ -322,14 +327,52 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   /// 发现页左上角：酷狗 / QQ / 汽水 / 网易。
+  ///
+  /// 未登录酷狗时只保留「酷狗」，隐藏 QQ / 汽水 / 网易；登录后才出现完整音源菜单。
   Widget _buildSourceSwitcher(DiscoverSourceProvider ds) {
+    final loggedIn = context.watch<KugouProvider>().isLoggedIn;
+    final available = loggedIn
+        ? DiscoverMusicSource.values
+        : const [DiscoverMusicSource.kugou];
+
+    // 登出后若仍停在远程音源，立刻收回酷狗，避免菜单已隐藏仍显示远程页。
+    if (!loggedIn && !ds.isKugou) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (!context.read<KugouProvider>().isLoggedIn &&
+            !context.read<DiscoverSourceProvider>().isKugou) {
+          context
+              .read<DiscoverSourceProvider>()
+              .setSource(DiscoverMusicSource.kugou);
+        }
+      });
+    }
+
+    final labelStyle = Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+        );
+
+    if (available.length == 1) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(DiscoverMusicSource.kugou.label, style: labelStyle),
+        ),
+      );
+    }
+
     return PopupMenuButton<DiscoverMusicSource>(
       tooltip: '切换音源',
       offset: const Offset(0, kToolbarHeight - 8),
       onSelected: (s) {
-        ds.setSource(s);
+        ds.setSource(
+          s,
+          requireKugouLogin: true,
+          isKugouLoggedIn: () => context.read<KugouProvider>().isLoggedIn,
+        );
       },
-      itemBuilder: (context) => DiscoverMusicSource.values
+      itemBuilder: (context) => available
           .map(
             (s) => CheckedPopupMenuItem<DiscoverMusicSource>(
               value: s,
@@ -343,12 +386,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              ds.source.label,
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
+            Text(ds.source.label, style: labelStyle),
             const Icon(Icons.arrow_drop_down, size: 20),
           ],
         ),

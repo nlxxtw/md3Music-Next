@@ -13,6 +13,7 @@ import 'core/services/diagnostic_logger.dart';
 import 'modules/recognition/floating_recognition_service.dart';
 import 'core/services/equalizer_service.dart';
 import 'core/services/convolution_service.dart';
+import 'core/services/viper_master_service.dart';
 import 'core/services/lyricon_provider_service.dart';
 import 'core/services/listening_grade_service.dart';
 import 'core/services/media_notification_service.dart';
@@ -95,6 +96,8 @@ Future<(bool, bool)> runBootstrap() async {
     EqualizerService.instance.init().catchError((_) {}),
     // 初始化本地 IRS 卷积音效（解压内置脉冲包并恢复上次选择）
     ConvolutionService.instance.init().catchError((_) {}),
+    // 蝰蛇母带处理链（默认关；推送到原生 AudioProcessor）
+    ViperMasterService.instance.init().catchError((_) {}),
     // 恢复蓝牙歌词开关 + 实时歌词推送协议（Lyricon/SuperLyric/LyricInfo 三选一）：
     // 让歌词服务定时器在需要时启动、启用选中协议。
     // 原生端 AudioPlaybackService.onCreate 会自行从 SharedPreferences 恢复开关。

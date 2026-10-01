@@ -1,7 +1,7 @@
 name: md3music
 description: "NextMusic - Music player with Material Design 3"
 publish_to: 'none'
-version: 13.3.38+3048
+version: 13.3.41+3050
 
 environment:
   sdk: ^3.12.0
@@ -47,7 +47,10 @@ dependencies:
   fluttertoast: ^10.0.0
   # TTML 歌词解析：Apple Music 风格 XML（Timed Text Markup Language）
   xml: ^6.5.0
-  m3e_core: ^0.1.6
+  m3e_core: ^1.1.4
+  # Material 库已解耦为独立包；m3e_core 1.1.0+ 要求 Flutter >=3.47.0 且依赖
+  # material_ui ^1.3.0（USB / Direct PCM 设置页与上游 5.8 UI 对齐）。
+  material_ui: ^1.3.0
   # AM 播放器传输按钮：路径级矢量图标形变（play↔pause 连续 morph + prev/next 描边动画）
   # 纯 Dart、零外部依赖，仅需自带 24x24 描边 SVG
   iconic_morph: ^1.9.0

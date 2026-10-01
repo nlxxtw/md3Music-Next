@@ -43,6 +43,7 @@ class EqualizerService extends ChangeNotifier {
 
   bool _enabled = false;
   bool _systemEffectsDisabled = false;
+  bool _suspended = false;
   bool _isBound = false;
   bool _isBinding = false;
 
@@ -54,8 +55,9 @@ class EqualizerService extends ChangeNotifier {
   List<String> _systemPresets = [];
   String _currentPreset = '正常';
 
-  bool get enabled => _enabled && !_systemEffectsDisabled;
+  bool get enabled => _enabled && !_systemEffectsDisabled && !_suspended;
   bool get systemEffectsDisabled => _systemEffectsDisabled;
+  bool get suspended => _suspended;
   bool get isBound => _isBound;
   bool get isBinding => _isBinding;
   int get bandCount => _bandCount;
@@ -152,7 +154,7 @@ class EqualizerService extends ChangeNotifier {
   /// 返回 true 表示至少有一个会话已绑定。
   Future<bool> tryBind() async {
     if (kIsWeb || !Platform.isAndroid) return false;
-    if (_systemEffectsDisabled) return false;
+    if (_systemEffectsDisabled || _suspended) return false;
     if (_isBinding) return _isBound;
 
     final pending = AudioService()
@@ -176,14 +178,14 @@ class EqualizerService extends ChangeNotifier {
   /// 绑定单个会话。第一个成功绑定的会话负责读回频段信息、预设表并应用已保存设置；
   /// 之后加入的会话由原生侧照镜像自动初始化（见 EqualizerPlugin.applyMirroredState）。
   Future<bool> _bindSession(int sessionId) async {
-    if (_systemEffectsDisabled) return false;
+    if (_systemEffectsDisabled || _suspended) return false;
     final isFirst = _boundSessions.isEmpty;
     try {
       final result = await _channel.invokeMethod<Map>('init', {
         'audioSessionId': sessionId,
       });
       if (result == null) return false;
-      if (_systemEffectsDisabled) {
+      if (_systemEffectsDisabled || _suspended) {
         try {
           await _channel.invokeMethod('release', {'audioSessionId': sessionId});
         } catch (_) {}
@@ -283,6 +285,18 @@ class EqualizerService extends ChangeNotifier {
       await tryBind();
     }
     await SettingsRepository().setDisableSystemAudioEffects(value);
+    notifyListeners();
+  }
+
+  /// 运行期挂起/恢复原生 Equalizer（Direct PCM 旁路用，**不写持久化**）。
+  Future<void> setSuspended(bool value) async {
+    if (_suspended == value) return;
+    _suspended = value;
+    if (value) {
+      await unbind();
+    } else {
+      await tryBind();
+    }
     notifyListeners();
   }
 
