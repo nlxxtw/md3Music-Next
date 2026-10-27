@@ -192,6 +192,13 @@ class AudioService {
     await _player.dispose();
   }
 
+  /// Web 端没有原生响度归一增益，保持与 io 实现同名同参（no-op），
+  /// 否则条件导出的两条分支签名不一致会报 undefined_method。
+  Future<void> setVolumeNormalization({
+    bool? enabled,
+    double? referenceLufs,
+  }) async {}
+
   /// Fetch audio as blob via XMLHttpRequest to bypass ORB (Opaque Response Blocking).
   /// ORB blocks cross-origin audio loaded directly by <audio> elements,
   /// but XMLHttpRequest uses CORS mode, so the response is not opaque.

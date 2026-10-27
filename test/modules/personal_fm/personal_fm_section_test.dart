@@ -119,7 +119,10 @@ class _FakePlayer extends PlayerProvider {
   }
 
   @override
-  Future<void> appendPlaylist(List<Song> songs) async {
+  Future<void> appendPlaylist(
+    List<Song> songs, {
+    bool allowDuplicates = false,
+  }) async {
     appended.add(songs.map((s) => s.id).toList());
     _queue = [..._queue, ...songs];
     notifyListeners();
