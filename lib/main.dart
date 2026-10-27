@@ -22,6 +22,7 @@ import 'core/services/wakelock_service.dart';
 import 'data/repositories/settings_repository.dart';
 import 'modules/onboarding/user_agreement_page.dart';
 import 'services/kugou_server.dart';
+import 'services/discovery_api/qqovo_auth.dart';
 import 'widgets/apple_lyrics/layout/lyric_preferences.dart';
 import 'widgets/md3_lyric_preferences.dart';
 
@@ -102,6 +103,9 @@ Future<(bool, bool)> runBootstrap() async {
     // 让歌词服务定时器在需要时启动、启用选中协议。
     // 原生端 AudioPlaybackService.onCreate 会自行从 SharedPreferences 恢复开关。
     _restoreLyricPushPref(),
+    // 恢复 QQ / 汽水 / 网易音源用的 OpenMusic 登录 Cookie
+    // （上游已取消匿名音源，未配置时远程源会提示去设置里填）
+    QqovoAuth.instance.load().catchError((_) {}),
   ]);
 
   // 注册通知栏/悬浮窗回调（悬浮窗内按钮 → DesktopLyricService；通知栏桌面歌词按钮 → toggle）

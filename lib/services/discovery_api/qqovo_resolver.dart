@@ -7,10 +7,15 @@ import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
 
+import 'qqovo_auth.dart';
+
 /// qqovo meting 直链解析（国内优先 music.qqovo.cn，失败再试 qqovo.top）。
 ///
-/// 重要：bootstrap 会下发 `openmusic_*` Cookie，后续 meting 必须带上，
-/// 否则仅有签名也会 403（表现为汽水/网易「无音源」）。
+/// 上游改版后**匿名调用已关闭**：`/api/session/bootstrap` 不再下发
+/// `apiSignKey`，meting 的 url/lrc/search 与 `/api/music/hot` 一律
+/// `401 ACCOUNT_AUTH_REQUIRED`。因此现在优先使用用户在设置里填的
+/// 网页登录 Cookie（见 [QqovoAuth]）；没有 Cookie 时仍保留老签名链路，
+/// 仅 `type=pic` 这类公开接口还能用。
 class QqovoResolver {
   QqovoResolver({Dio? dio}) : _dio = dio ?? _sharedDio;
 
@@ -26,6 +31,54 @@ class QqovoResolver {
     d.interceptors.add(CookieManager(_cookieJar));
     return d;
   }();
+
+  /// Cookie 登录态专用：不带 CookieManager，避免拦截器覆盖手工设置的
+  /// `Cookie` 头（网页登录的 openmusic_* 与匿名会话互不兼容）。
+  static final Dio _cookieDio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 8),
+    receiveTimeout: const Duration(seconds: 20),
+  ));
+
+  static Dio _dioFor(_QqovoSession session) =>
+      session.usesCookie ? _cookieDio : _sharedDio;
+
+  /// 带登录态的 GET：401 时用 `openmusic_account_refresh` 续期一次再重试。
+  Future<Response<dynamic>> _authedGet(
+    String base,
+    String url,
+    _QqovoSession session, {
+    bool followRedirects = true,
+  }) async {
+    Future<Response<dynamic>> send(_QqovoSession s) => _dioFor(s).get(
+          url,
+          options: Options(
+            headers: _headersFor(base, url, s),
+            followRedirects: followRedirects,
+            validateStatus: (c) => c != null && c < 600,
+          ),
+        );
+
+    var resp = await send(session);
+    if (resp.statusCode == 401 && session.usesCookie) {
+      final renewed = await QqovoAuth.instance.refreshSession();
+      if (!renewed) return resp;
+      final next = await _ensureSession(base);
+      if (next == null) return resp;
+      resp = await send(next);
+      _absorbSetCookie(next, resp);
+    }
+    return resp;
+  }
+
+  /// 跟住服务端下发的 Cookie（续期后 session/refresh 值会变）。
+  static void _absorbSetCookie(_QqovoSession session, Response<dynamic> resp) {
+    if (!session.usesCookie) return;
+    final raw = resp.headers.map['set-cookie'];
+    if (raw == null || raw.isEmpty) return;
+    // 落盘失败不影响本次请求
+    // ignore: discarded_futures
+    QqovoAuth.instance.mergeSetCookies(raw);
+  }
 
   static const _bases = <String>[
     'https://music.qqovo.cn',
@@ -169,17 +222,21 @@ class QqovoResolver {
             : '&id=${Uri.encodeQueryComponent(songId)}';
         final url =
             '$base/api/meting?server=$server&type=$type$idPart$q';
-        final resp = await _dio.get(
-          url,
-          options: Options(
-            headers: _signedHeaders(base, url, session.key),
-            validateStatus: (c) => c != null && c < 500,
-          ),
-        );
+        final resp = await _authedGet(base, url, session);
+        if (resp.statusCode == 401) {
+          // 续期也救不回来：新版上游必须带网页登录 Cookie
+          QqovoAuth.instance.markAuthRequired();
+          return null;
+        }
+        _absorbSetCookie(session, resp);
         if (resp.statusCode == 403) {
           _sessions.remove(base);
           await _cookieJar.delete(Uri.parse(base));
           continue;
+        }
+        // pic 匿名也能 200，不能据此判定登录态
+        if (resp.statusCode == 200 && type != 'pic') {
+          QqovoAuth.instance.markAuthOk();
         }
         return resp.data;
       } catch (e) {
@@ -198,18 +255,18 @@ class QqovoResolver {
         final session = await _ensureSession(base);
         if (session == null) continue;
         final url = '$base/api/music/hot?limit=$n';
-        final resp = await _dio.get(
-          url,
-          options: Options(
-            headers: _signedHeaders(base, url, session.key),
-            validateStatus: (c) => c != null && c < 500,
-          ),
-        );
+        final resp = await _authedGet(base, url, session);
+        if (resp.statusCode == 401) {
+          QqovoAuth.instance.markAuthRequired();
+          return const [];
+        }
         if (resp.statusCode == 403) {
           _sessions.remove(base);
           await _cookieJar.delete(Uri.parse(base));
           continue;
         }
+        _absorbSetCookie(session, resp);
+        QqovoAuth.instance.markAuthOk();
         final data = resp.data;
         if (data is! List) continue;
         return data
@@ -279,14 +336,13 @@ class QqovoResolver {
       for (final quality in qualities) {
         final trackUrl =
             '$base/api/meting?server=$server&type=url&id=$songId&quality=$quality';
-        final trackResp = await _dio.get(
-          trackUrl,
-          options: Options(
-            headers: _signedHeaders(base, trackUrl, session.key),
-            // 502/404 等继续试下一档，勿整链放弃
-            validateStatus: (c) => c != null && c < 600,
-          ),
-        );
+        final trackResp = await _authedGet(base, trackUrl, session);
+        if (trackResp.statusCode == 401) {
+          // 未登录 / 凭证失效：整条音质链都没意义，直接交给上层兜底
+          QqovoAuth.instance.markAuthRequired();
+          debugPrint('[QqovoResolver] 401 on $base — 需要登录 Cookie');
+          return best;
+        }
         if (trackResp.statusCode == 403) {
           debugPrint('[QqovoResolver] 403 on $base — clear session/cookies');
           _sessions.remove(base);
@@ -294,8 +350,15 @@ class QqovoResolver {
           return best;
         }
         if (trackResp.statusCode != 200) continue;
+        _absorbSetCookie(session, trackResp);
+        QqovoAuth.instance.markAuthOk();
         final data = trackResp.data;
         if (data is! Map) continue;
+        final errText = '${data['error'] ?? ''}'.trim();
+        if (errText.isNotEmpty) {
+          // 例如「未绑定音乐账号」「该音质需要 VIP」：留给诊断日志排查
+          debugPrint('[QqovoResolver] $server/$songId q=$quality -> $errText');
+        }
 
         var playUrl = '${data['url'] ?? ''}'.trim();
         var auth = '${data['auth'] ?? ''}'.trim();
@@ -309,13 +372,7 @@ class QqovoResolver {
             (playUrl.contains('qqovo.') ||
                 playUrl.contains('/api/qishui') ||
                 playUrl.contains('/api/'))) {
-          final sourceResp = await _dio.get(
-            playUrl,
-            options: Options(
-              headers: _signedHeaders(base, playUrl, session.key),
-              validateStatus: (c) => c != null && c < 600,
-            ),
-          );
+          final sourceResp = await _authedGet(base, playUrl, session);
           final sourceData = sourceResp.data;
           if (sourceData is Map) {
             playUrl = '${sourceData['url'] ?? ''}'.trim();
@@ -477,19 +534,18 @@ class QqovoResolver {
         if (session == null) continue;
         final url =
             '$base/api/meting?server=$server&type=pic&id=${Uri.encodeQueryComponent(songId)}';
-        final resp = await _dio.get(
+        final resp = await _authedGet(
+          base,
           url,
-          options: Options(
-            headers: _signedHeaders(base, url, session.key),
-            followRedirects: false,
-            validateStatus: (c) => c != null && c < 500,
-          ),
+          session,
+          followRedirects: false,
         );
         if (resp.statusCode == 403) {
           _sessions.remove(base);
           await _cookieJar.delete(Uri.parse(base));
           continue;
         }
+        _absorbSetCookie(session, resp);
         final loc = resp.headers.value('location')?.trim();
         if (loc != null && loc.isNotEmpty) {
           final absolute = loc.startsWith('http')
@@ -629,9 +685,28 @@ class QqovoResolver {
   }
 
   Future<_QqovoSession?> _ensureSession(String base) async {
+    // ① 网页登录 Cookie 优先：新版上游只认凭证，已不需要签名握手
+    final cookie = QqovoAuth.instance.cookie;
+    if (cookie.isNotEmpty) {
+      final cached = _sessions[base];
+      if (cached != null &&
+          cached.cookie == cookie &&
+          !cached.isExpired) {
+        return cached;
+      }
+      final session = _QqovoSession(
+        key: '',
+        cookie: cookie,
+        expiresAt: DateTime.now().add(const Duration(minutes: 30)),
+      );
+      _sessions[base] = session;
+      return session;
+    }
+
     final cached = _sessions[base];
     if (cached != null && !cached.isExpired) return cached;
 
+    // ② 无 Cookie：老匿名链路（上游已关，仅 pic 等公开接口还能用）
     final boot = await _dio.post(
       '$base/api/session/bootstrap',
       data: {'deviceId': _uuid()},
@@ -643,8 +718,18 @@ class QqovoResolver {
     );
     final apiSignKey = '${boot.data?['apiSignKey'] ?? ''}'.trim();
     if (apiSignKey.isEmpty) {
-      debugPrint('[QqovoResolver] bootstrap empty key status=${boot.statusCode}');
-      return null;
+      // bootstrap 已不再下发 apiSignKey：缓存一个无签名会话，
+      // 避免每次取封面都重新握手（url/lrc 会被 401 拦下并提示登录）。
+      final session = _QqovoSession(
+        key: '',
+        expiresAt: DateTime.now().add(const Duration(minutes: 5)),
+      );
+      _sessions[base] = session;
+      debugPrint(
+        '[QqovoResolver] bootstrap 无 apiSignKey（上游要求登录）'
+        'status=${boot.statusCode} $base',
+      );
+      return session;
     }
     final session = _QqovoSession(
       key: apiSignKey,
@@ -653,6 +738,11 @@ class QqovoResolver {
     _sessions[base] = session;
     debugPrint('[QqovoResolver] bootstrap ok $base');
     return session;
+  }
+
+  /// 清掉会话缓存（用户改/删了 Cookie 后调用）。
+  static void resetSessions() {
+    _sessions.clear();
   }
 
   Map<String, String> _browserHeaders(String base) => {
@@ -664,12 +754,22 @@ class QqovoResolver {
         'Origin': base,
       };
 
-  /// 签名：body 段对 GET 用空字符串（与 music.qqovo.cn 实测一致；勿用 sha256('')）。
-  Map<String, String> _signedHeaders(
+  /// 请求头：有登录 Cookie 就带上（只发给 qqovo 自己的域，别泄漏给 CDN）；
+  /// 没有 Cookie 时退回老的 HMAC 签名（上游已废弃，保留兼容）。
+  Map<String, String> _headersFor(
     String base,
     String url,
-    String apiSignKey,
+    _QqovoSession session,
   ) {
+    final headers = <String, String>{..._browserHeaders(base)};
+    final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+    if (session.cookie.isNotEmpty &&
+        (host.isEmpty || host.contains('qqovo'))) {
+      headers['Cookie'] = session.cookie;
+    }
+    final apiSignKey = session.key;
+    if (apiSignKey.isEmpty) return headers;
+
     final uri = Uri.parse(url);
     final timestamp = '${DateTime.now().millisecondsSinceEpoch ~/ 1000}';
     final nonce = _uuid();
@@ -681,12 +781,10 @@ class QqovoResolver {
         .convert(utf8.encode(payload))
         .bytes;
     final sign = base64Url.encode(digest).replaceAll('=', '');
-    return {
-      ..._browserHeaders(base),
-      'X-OM-Ts': timestamp,
-      'X-OM-Nonce': nonce,
-      'X-OM-Sign': sign,
-    };
+    headers['X-OM-Ts'] = timestamp;
+    headers['X-OM-Nonce'] = nonce;
+    headers['X-OM-Sign'] = sign;
+    return headers;
   }
 
   static String _uuid() {
@@ -715,8 +813,16 @@ class QqovoHit {
 }
 
 class _QqovoSession {
-  _QqovoSession({required this.key, required this.expiresAt});
+  _QqovoSession({
+    required this.key,
+    required this.expiresAt,
+    this.cookie = '',
+  });
   final String key;
+
+  /// 网页登录 Cookie（新版上游唯一凭证）。
+  final String cookie;
   final DateTime expiresAt;
   bool get isExpired => DateTime.now().isAfter(expiresAt);
+  bool get usesCookie => cookie.isNotEmpty;
 }

@@ -43,6 +43,8 @@ import '../../providers/shortcut_config_provider.dart';
 import '../../providers/tab_config_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../services/kugou_server.dart';
+import '../../services/discovery_api/qqovo_auth.dart';
+import '../../services/discovery_api/qqovo_resolver.dart';
 import '../../widgets/apple_lyrics/layout/lyric_preferences.dart';
 import 'lyric_animation_settings_page.dart';
 import '../../widgets/seed_color_picker.dart';
@@ -73,7 +75,10 @@ class SettingsPage extends StatefulWidget {
   static List<({String label, String category, String aliases})>?
       extraSearchIndexEntries;
 
-  const SettingsPage({super.key});
+  const SettingsPage({super.key, this.initialSection});
+
+  /// 直接打开某个分类（如从发现页的「需要登录」提示跳转到「在线音乐」）。
+  final String? initialSection;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -218,6 +223,11 @@ class _SettingsPageState extends State<SettingsPage>
     LyriconProviderService.instance.addListener(_onLyriconStateChanged);
     // 桌面歌词状态变化（设置页开关 / 播放器长按 / 通知栏按钮）→ 刷新 UI
     DesktopLyricService.instance.addListener(_onDesktopLyricChanged);
+    // 由外部深链进入指定分类时，跳过总览直接展示二级页
+    final initial = widget.initialSection;
+    if (initial != null && _categories.any((e) => e.$1 == initial)) {
+      _activeSection = initial;
+    }
   }
 
   @override
@@ -2639,6 +2649,64 @@ class _SettingsPageState extends State<SettingsPage>
   Widget _buildOnlineMusicSection(ColorScheme colorScheme) {
     return Column(
       children: [
+        _buildGroupLabel('QQ / 汽水 / 网易音源', colorScheme, first: true),
+        ListenableBuilder(
+          listenable: QqovoAuth.instance,
+          builder: (context, _) {
+            final auth = QqovoAuth.instance;
+            final configured = auth.hasCookie;
+            final expired = configured && auth.needsLogin;
+            final String state;
+            if (configured && auth.usingBuiltIn) {
+              state = '已使用编译期内置凭证 · 点此可覆盖';
+            } else if (!configured) {
+              state = auth.hasBuiltIn
+                  ? '内置凭证已停用 · 点此填写'
+                  : '未登录 · 点此填入网页 Cookie';
+            } else if (expired) {
+              state = '登录态已失效 · 点此重新填写';
+            } else {
+              final left = auth.sessionRemaining;
+              state = left == null
+                  ? '已登录 · 可解析 QQ / 汽水 / 网易音源'
+                  : '已登录 · 有效期剩 ${_sessionLeftText(left)}';
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // search: 登录 openmusic qqovo cookie 账号 音源 qq 汽水 网易
+                ListTile(
+                  leading: Icon(
+                    configured && !expired
+                        ? Icons.verified_user_outlined
+                        : Icons.account_circle_outlined,
+                    color: configured && !expired
+                        ? colorScheme.primary
+                        : expired
+                            ? colorScheme.error
+                            : colorScheme.onSurfaceVariant,
+                  ),
+                  title: const Text('OpenMusic 账号登录'),
+                  subtitle: Text(state),
+                  trailing: const Icon(Icons.chevron_right, size: 18),
+                  onTap: _showQqovoAuthDialog,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: Text(
+                    '上游 music.qqovo.cn 已不再允许匿名取音源：可在构建时用 '
+                    'QQOVO_COOKIE 内置整条 Cookie，或在这里粘贴'
+                    '（关键项 openmusic_account_session）。',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        _buildGroupLabel('本地服务', colorScheme),
         // search: 接口 本地服务器 api 在线音乐
         ListTile(
           leading: Icon(Icons.dns, color: colorScheme.primary),
@@ -2680,6 +2748,183 @@ class _SettingsPageState extends State<SettingsPage>
         ),
       ],
     );
+  }
+
+  /// 会话剩余时长的人话文案（上游账号会话只有 3 天寿命）。
+  String _sessionLeftText(Duration left) {
+    if (left.isNegative) return '0 小时';
+    if (left.inHours >= 24) return '${(left.inHours / 24).toStringAsFixed(1)} 天';
+    if (left.inMinutes >= 60) return '${left.inHours} 小时';
+    return '${left.inMinutes} 分钟';
+  }
+
+  /// 填写 OpenMusic（music.qqovo.cn）网页登录 Cookie。
+  /// 上游取消匿名音源后，QQ / 汽水 / 网易的 url、歌词、搜索都要靠它。
+  Future<void> _showQqovoAuthDialog() async {
+    final controller = TextEditingController(text: QqovoAuth.instance.cookie);
+    var busy = false;
+    String? message;
+    var messageOk = false;
+
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            Future<void> submit() async {
+              if (busy) return;
+              final raw = controller.text.trim();
+              setLocal(() {
+                busy = true;
+                message = null;
+              });
+              final check = await QqovoAuth.verify(raw);
+              final saved = await QqovoAuth.instance.save(raw);
+              QqovoResolver.resetSessions();
+              if (!ctx.mounted) return;
+              setLocal(() {
+                busy = false;
+                messageOk = check.ok;
+                message = saved ? check.message : '保存失败，请稍后重试';
+              });
+              if (check.ok) Navigator.of(ctx).pop(true);
+            }
+
+            return AlertDialog(
+              title: const Text('OpenMusic 账号登录'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '1. 打开 music.qqovo.cn 并登录（微信 / GitHub / Linux.do）\n'
+                      '2. F12 → Network 点任意请求 → Request Headers 里复制'
+                      '整条 Cookie\n'
+                      '   关键是 openmusic_account_session；只给 openmusic_token'
+                      ' 会被判未登录\n'
+                      '3. 或在 Application → Cookies 里逐个复制，拼成 a=1; b=2\n'
+                      '4. 若网站要求绑定音乐账号（QQ / 汽水），先在网站里扫码绑定',
+                      style: Theme.of(ctx).textTheme.bodySmall,
+                    ),
+                    if (QqovoAuth.instance.hasBuiltIn) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '当前安装包已内置编译期凭证（QQOVO_COOKIE），不填也能用；'
+                        '在这里填值会覆盖内置凭证，「清除」则停用内置。',
+                        style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                              color: Theme.of(ctx).colorScheme.primary,
+                            ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: controller,
+                      minLines: 3,
+                      maxLines: 6,
+                      style: const TextStyle(fontSize: 12),
+                      decoration: const InputDecoration(
+                        labelText: 'Cookie',
+                        hintText: 'openmusic_token=xxxx; openmusic_uid=xxxx',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                    if (message != null) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(
+                            messageOk
+                                ? Icons.check_circle_outline
+                                : Icons.error_outline,
+                            size: 16,
+                            color: messageOk
+                                ? Theme.of(ctx).colorScheme.primary
+                                : Theme.of(ctx).colorScheme.error,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              message!,
+                              style: Theme.of(ctx).textTheme.bodySmall?.copyWith(
+                                color: messageOk
+                                    ? Theme.of(ctx).colorScheme.primary
+                                    : Theme.of(ctx).colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: busy ? null : () => Navigator.of(ctx).pop(false),
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  onPressed: busy
+                      ? null
+                      : () async {
+                          try {
+                            await launchUrl(
+                              Uri.parse(QqovoAuth.siteUrl),
+                              mode: LaunchMode.externalApplication,
+                            );
+                          } catch (_) {}
+                        },
+                  child: const Text('打开登录页'),
+                ),
+                if (QqovoAuth.instance.hasBuiltIn &&
+                    !QqovoAuth.instance.usingBuiltIn)
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            await QqovoAuth.instance.restoreBuiltIn();
+                            QqovoResolver.resetSessions();
+                            if (ctx.mounted) Navigator.of(ctx).pop(true);
+                          },
+                    child: const Text('恢复内置'),
+                  ),
+                if (QqovoAuth.instance.hasCookie)
+                  TextButton(
+                    onPressed: busy
+                        ? null
+                        : () async {
+                            await QqovoAuth.instance.clear();
+                            QqovoResolver.resetSessions();
+                            if (ctx.mounted) Navigator.of(ctx).pop(true);
+                          },
+                    child: const Text('清除'),
+                  ),
+                FilledButton(
+                  onPressed: busy ? null : submit,
+                  child: busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('保存并验证'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    // 弹窗退场动画期间 TextField 可能仍持有 controller，延后回收避免误用
+    unawaited(
+      Future<void>.delayed(const Duration(seconds: 1), controller.dispose),
+    );
+    if (changed == true && mounted) {
+      showToast('已更新 OpenMusic 凭证');
+    }
   }
 
   /// 询问是否重启本地 API 服务器，确认后重启并更新端口展示。

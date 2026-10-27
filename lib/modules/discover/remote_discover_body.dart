@@ -5,6 +5,8 @@ import '../../data/models/song.dart';
 import '../../providers/discover_source_provider.dart';
 import '../../providers/player_provider.dart';
 import '../../services/discovery_api/discovery_api_client.dart';
+import '../../services/discovery_api/qqovo_auth.dart';
+import '../settings/settings_page.dart';
 import '../../widgets/discovery_cover_image.dart';
 import '../../widgets/song_list_item.dart';
 import 'remote_fm_section.dart';
@@ -53,6 +55,18 @@ class RemoteDiscoverBody extends StatelessWidget {
                 style: TextStyle(color: cs.onSurfaceVariant),
               ),
               const SizedBox(height: 16),
+              if (!QqovoAuth.instance.hasCookie) ...[
+                FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const SettingsPage(initialSection: '在线音乐'),
+                    ),
+                  ),
+                  child: const Text('去填写 OpenMusic Cookie'),
+                ),
+                const SizedBox(height: 8),
+              ],
               FilledButton.tonal(
                 onPressed: () => ds.refreshRemote(),
                 child: const Text('重试'),

@@ -264,6 +264,29 @@ flutter build apk --release --split-per-abi
 # build/app/outputs/flutter-apk/app-x86_64-release.apk      (模拟器)
 ```
 
+### 6.（可选）内置 OpenMusic 凭证
+
+QQ / 汽水 / 网易音源依赖 `music.qqovo.cn` 的登录态（上游已关闭匿名接口），
+可以在构建时把 Cookie 打进包内，装机后就不用手动填了：
+
+```bash
+flutter build apk --release --split-per-abi \
+  --dart-define=QQOVO_COOKIE="openmusic_uid=...; openmusic_account_session=...; openmusic_token=..."
+```
+
+GitHub Actions 构建时改用仓库 Secrets：`Settings → Secrets and variables → Actions`
+里新建 `QQOVO_COOKIE`，workflow 已自动读取；不配置时该参数为空，行为退回手动登录。
+Cookie 获取：浏览器登录 `music.qqovo.cn` → F12 → Network 任选一个请求 →
+复制 Request Headers 里的**整条** Cookie（只给 `openmusic_token` 会被判未登录，
+关键是 `openmusic_account_session`）。
+
+> 账号会话（`openmusic_account_session`）实测只有 **3 天**有效期（`refresh` 30 天），
+> 且上游响应不带 `Set-Cookie`（不轮换），所以内置凭证约 3 天后失效：
+> 到期后在设置页重新粘贴一次即可，或重新构建内置新值；设置页会显示剩余有效期。
+
+> ⚠️ 内置值会随 APK 一起分发且可被反编译提取，请不要公开分享带凭证的安装包。
+> 设置页「在线音乐 › OpenMusic 账号登录」里仍可覆盖或清除内置凭证。
+
 ---
 
 ## 📁 项目结构

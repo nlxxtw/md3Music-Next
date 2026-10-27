@@ -242,6 +242,9 @@ jobs:
         run: flutter pub get
 
       - name: Flutter build APK (Skia arm64)
+        env:
+          # 可选：把 OpenMusic 登录 Cookie 打进包内（仓库 Secrets 里配置 QQOVO_COOKIE）
+          QQOVO_COOKIE: ${{ secrets.QQOVO_COOKIE }}
         run: |
           set -o pipefail
           flutter build apk --release --flavor skia --split-per-abi \
@@ -249,6 +252,7 @@ jobs:
             --tree-shake-icons \
             --obfuscate --split-debug-info=build/app/outputs/symbols-skia \
             --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
+            --dart-define=QQOVO_COOKIE="$QQOVO_COOKIE" \
             --build-name=${{ steps.version.outputs.version }} \
             --build-number=${{ steps.version.outputs.versionCode }} 2>&1 | tee build-skia.log
           status=${PIPESTATUS[0]}
@@ -264,6 +268,8 @@ jobs:
           ls -lh build/app/outputs/flutter-apk/
 
       - name: Flutter build APK (Impeller arm64)
+        env:
+          QQOVO_COOKIE: ${{ secrets.QQOVO_COOKIE }}
         run: |
           set -o pipefail
           flutter build apk --release --flavor impeller --split-per-abi \
@@ -271,6 +277,7 @@ jobs:
             --tree-shake-icons \
             --obfuscate --split-debug-info=build/app/outputs/symbols-impeller \
             --dart-define=APP_VERSION=${{ steps.version.outputs.version }} \
+            --dart-define=QQOVO_COOKIE="$QQOVO_COOKIE" \
             --build-name=${{ steps.version.outputs.version }} \
             --build-number=${{ steps.version.outputs.versionCode }} 2>&1 | tee build-impeller.log
           status=${PIPESTATUS[0]}

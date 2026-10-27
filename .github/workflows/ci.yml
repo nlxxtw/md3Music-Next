@@ -106,21 +106,28 @@ jobs:
 
       # 构建 Release APK：Skia 主包 + Impeller 可选包（同 applicationId=com.salt.music）
       - name: Flutter build APK (release, skia, arm64)
+        env:
+          # 可选：把 OpenMusic 登录 Cookie 打进包内（仓库 Secrets 里配置 QQOVO_COOKIE）
+          QQOVO_COOKIE: ${{ secrets.QQOVO_COOKIE }}
         run: |
           flutter build apk --release --flavor skia --split-per-abi \
             --target-platform=android-arm64 \
             --tree-shake-icons \
-            --dart-define=APP_VERSION=ci-${{ github.sha }}
+            --dart-define=APP_VERSION=ci-${{ github.sha }} \
+            --dart-define=QQOVO_COOKIE="$QQOVO_COOKIE"
           ls -lh build/app/outputs/flutter-apk/
           cp -f build/app/outputs/flutter-apk/app-arm64-v8a-skia-release.apk \
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
       - name: Flutter build APK (release, impeller, arm64)
+        env:
+          QQOVO_COOKIE: ${{ secrets.QQOVO_COOKIE }}
         run: |
           flutter build apk --release --flavor impeller --split-per-abi \
             --target-platform=android-arm64 \
             --tree-shake-icons \
-            --dart-define=APP_VERSION=ci-${{ github.sha }}
+            --dart-define=APP_VERSION=ci-${{ github.sha }} \
+            --dart-define=QQOVO_COOKIE="$QQOVO_COOKIE"
           ls -lh build/app/outputs/flutter-apk/
           find build/app/outputs/flutter-apk -maxdepth 1 -type f -name '*.apk' \
             ! -name 'app-arm64-v8a-release.apk' \

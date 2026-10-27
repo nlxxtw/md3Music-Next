@@ -8,6 +8,7 @@ import '../modules/discover/remote_fm_refill.dart';
 import '../providers/player_provider.dart';
 import '../services/discovery_api/discovery_api_client.dart';
 import '../services/discovery_api/fm_modes.dart';
+import '../services/discovery_api/qqovo_auth.dart';
 
 enum DiscoverMusicSource { kugou, qq, soda, netease }
 
@@ -430,6 +431,11 @@ class DiscoverSourceProvider extends ChangeNotifier {
       final gotAnything = nextPlaylists.isNotEmpty ||
           nextToplists.isNotEmpty ||
           nextFm.isNotEmpty;
+      // 上游（OpenMusic）已取消匿名接口：没配 Cookie 时给明确指引，别留白页
+      if (!gotAnything && !QqovoAuth.instance.hasCookie) {
+        _error = 'QQ / 汽水 / 网易音源需要登录，'
+            '请到「设置 › 在线音乐」填写 OpenMusic Cookie';
+      }
       if (!gotAnything && hadContent) {
         _restoreFromCache(sourceKey);
         return;

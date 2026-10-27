@@ -49,11 +49,22 @@ class DiscoveryApiClient {
   }) async {
     // OpenMusic /api：netease / qq(tencent) / soda(qishui) 走 qqovo meting 搜索
     if (source == 'netease' || source == 'qq' || source == 'soda') {
-      return _searchViaQqovo(
+      final hits = await _searchViaQqovo(
         server: serverForSource(source),
         source: source,
         keyword: keyword,
       );
+      if (hits.isNotEmpty) return hits;
+      // 上游已关匿名搜索：没有登录 Cookie 时回落云端 musicdl（仅 QQ / 汽水）
+      if (source == 'qq' || source == 'soda') {
+        return _searchViaCloud(
+          source: source,
+          keyword: keyword,
+          page: page,
+          limit: limit,
+        );
+      }
+      return hits;
     }
     // 未知源仍回落 musicdl /api/v1/search
     final res = await _dio.get('$baseUrl/api/v1/search', queryParameters: {
@@ -770,6 +781,39 @@ class DiscoveryApiClient {
         .map((e) => _songFromMeting(Map<String, dynamic>.from(e), source))
         .where((s) => s.id.isNotEmpty)
         .toList();
+  }
+
+  /// 云端 musicdl 搜索（`source` 仅支持 qq / soda）。
+  /// qqovo 需要登录后，未配置 Cookie 时的匿名兜底。
+  Future<List<Song>> _searchViaCloud({
+    required String source,
+    required String keyword,
+    int page = 1,
+    int limit = 30,
+  }) async {
+    try {
+      final res = await _dio.get(
+        '$baseUrl/api/v1/search',
+        queryParameters: {
+          'source': source,
+          'q': keyword,
+          'page': page,
+          'limit': limit,
+        },
+        options: Options(validateStatus: (c) => c != null && c < 600),
+      );
+      final data = res.data;
+      if (data is! Map) return const [];
+      final list = (data['songs'] as List?) ?? const [];
+      return list
+          .whereType<Map>()
+          .map((e) => songFromDiscovery(Map<String, dynamic>.from(e), source))
+          .where((s) => s.remoteTrackId.isNotEmpty && s.title.isNotEmpty)
+          .toList();
+    } catch (e) {
+      debugPrint('[DiscoveryApi] cloud search failed source=$source err=$e');
+      return const [];
+    }
   }
 
   Future<({DiscoveryPlaylist? playlist, List<Song> songs})> _playlistViaQqovo({

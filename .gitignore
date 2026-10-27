@@ -36,3 +36,10 @@ android/keystore.properties
 .md3/
 .import.fastimport
 **/node_modules/
+
+# 本地构建凭证（含 Cookie 等敏感值，勿提交）
+qqovo.local.json
+dart-defines.local.json
+
+# 本地工作区数据（笔记/记忆，含调试痕迹）
+.workbuddy/

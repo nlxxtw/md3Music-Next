@@ -79,8 +79,12 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Flutter build APK
+        env:
+          # 可选：把 OpenMusic 登录 Cookie 打进包内（仓库 Secrets 里配置 QQOVO_COOKIE）
+          QQOVO_COOKIE: ${{ secrets.QQOVO_COOKIE }}
         run: |
-          flutter build apk --${{ inputs.build_type }} --flavor impeller
+          flutter build apk --${{ inputs.build_type }} --flavor impeller \
+            --dart-define=QQOVO_COOKIE="$QQOVO_COOKIE"
           ls -lh build/app/outputs/flutter-apk/
           # 无 split-per-abi：app-impeller-release.apk；有 ABI：app-arm64-v8a-impeller-release.apk
           if [ -f build/app/outputs/flutter-apk/app-impeller-${{ inputs.build_type }}.apk ]; then

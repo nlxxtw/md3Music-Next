@@ -40,6 +40,7 @@ import 'kugou_provider.dart';
 import '../services/kugou_api/kugou_api_client.dart';
 import '../services/kugou_api/kugou_models.dart';
 import '../services/discovery_api/discovery_api_client.dart';
+import '../services/discovery_api/qqovo_auth.dart';
 import 'playback_request_gate.dart';
 import 'position_rewind_gate.dart';
 
@@ -411,6 +412,12 @@ class PlayerProvider extends ChangeNotifier with WidgetsBindingObserver {
   String _resolveErrorText(Song? song) {
     if (song?.isLongAudio ?? false) return '该章节为 听书VIP单独付费内容';
     if (song?.isRemoteDiscovery ?? false) {
+      // 上游（OpenMusic）已改为登录才能取音源：明确提示去设置里填 Cookie
+      if (QqovoAuth.instance.needsLogin) {
+        return QqovoAuth.instance.hasCookie
+            ? 'OpenMusic 登录态已失效，请到「设置 › 在线音乐」重新填写 Cookie'
+            : 'QQ / 汽水 / 网易音源需要登录：请到「设置 › 在线音乐」填写 OpenMusic Cookie';
+      }
       return '无法获取播放链接（可能是付费/无音质曲目）';
     }
     return '无法获取播放链接';

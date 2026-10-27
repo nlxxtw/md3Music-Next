@@ -72,6 +72,7 @@ const List<({String label, String category, String aliases})>
   (label: '播放 MV 时自动关闭独占', category: 'USB 独占', aliases: 'usb 独占 mv'),
   (label: '主页 Tab 管理', category: '主页管理', aliases: 'tab 标签页 主页'),
   (label: '桌面快捷方式', category: '桌面快捷方式', aliases: '快捷方式 快捷 长按'),
+  (label: 'OpenMusic 账号登录', category: '在线音乐', aliases: '登录 openmusic qqovo cookie 账号 音源'),
   (label: '本地数据接口', category: '在线音乐', aliases: '接口 本地服务器 api 在线音乐'),
   (label: '清除缓存', category: '缓存与数据', aliases: '缓存 清除'),
   (label: '数据迁移（修复数据混乱）', category: '缓存与数据', aliases: '迁移 数据 修复'),
