@@ -80,6 +80,12 @@ dev_dependencies:
 # Architecture.arm64e，导致 Android release 构建失败。钉到兼容版。
 dependency_overrides:
   objective_c: 9.5.0
+  # 仓库没提交 pubspec.lock，CI 每次都解析最新版本，容易踩到刚发布的包：
+  # shared_preferences_foundation 2.6.0（2026-10-17）/ 2.6.1（2026-10-27）需要
+  # Dart SDK ^3.13，其 messages.g.ffi.dart 在当前工具链上会报
+  # "Constant evaluation error"，直接打挂 kernel_snapshot。
+  # 2.5.7 是 10-01 那次成功构建实际用到的版本，钉住即可。
+  shared_preferences_foundation: 2.5.7
 
 flutter:
   uses-material-design: true
