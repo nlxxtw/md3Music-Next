@@ -287,6 +287,20 @@ Cookie 获取：浏览器登录 `music.qqovo.cn` → F12 → Network 任选一�
 > ⚠️ 内置值会随 APK 一起分发且可被反编译提取，请不要公开分享带凭证的安装包。
 > 设置页「在线音乐 › OpenMusic 账号登录」里仍可覆盖或清除内置凭证。
 
+### 7. 依赖版本锁定（pubspec.lock）
+
+仓库提交了 `pubspec.lock`，CI 与本地构建解析到同一批版本，避免上游发新版把构建打挂。
+历史上踩过两次：`material_ui` 1.6.0+ 的 `RoundedPolygon` 与 `m3e_core` 撞名、
+`shared_preferences_foundation` 2.6.x 的 FFI 常量求值错误。
+
+- 普通开发：正常 `flutter pub get` 即可，不要提交与 `pubspec.yaml` 无关的 lock 变动。
+- 升级依赖：改 `pubspec.yaml` → `flutter pub upgrade` → 本地跑通后把 `pubspec.lock` 一起提交。
+- 自动维护：`.github/workflows/pubspec-lock.yml` 会在每次推到 `main` 时跑一次
+  `flutter pub get`，只有 lock 内容真的变化才由 bot 提交，平时不会产生噪音。
+- `pubspec.yaml` 里的 `dependency_overrides`（`material_ui: 1.5.0`、
+  `shared_preferences_foundation: 2.5.7`）是兜底约束，防止 lock 被删后再次踩坑；
+  等 `m3e_core` 新版解决 `RoundedPolygon` 冲突后可放开。
+
 ---
 
 ## 📁 项目结构

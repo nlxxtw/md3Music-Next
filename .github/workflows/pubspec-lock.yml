@@ -1,0 +1,55 @@
+name: Lock Dependencies
+
+# 仓库此前没提交 pubspec.lock，CI 每次 `flutter pub get` 都会解析到最新版本，
+# 上游刚发版就会把构建打挂（踩过两次：material_ui 的 RoundedPolygon 撞名、
+# shared_preferences_foundation 2.6.x 的 FFI 常量求值错误）。
+#
+# 这里把解析结果固化下来：只有当 pubspec.yaml 改动导致解析结果变化时才提交，
+# 平时跑一次 `flutter pub get` 会复现同一份 lock，没有 diff 就什么都不做。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pubspec-lock
+  cancel-in-progress: true
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Commit pubspec.lock if changed
+        run: |
+          set -e
+          if [ ! -f pubspec.lock ]; then
+            echo "::error title=pubspec-lock::flutter pub get 没有生成 pubspec.lock"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f pubspec.lock
+          if git diff --cached --quiet; then
+            echo "pubspec.lock 无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "chore: 锁定依赖版本 (pubspec.lock) [skip ci]"
+          # 期间若有人推了新提交，先变基再推，避免非快进被拒
+          git pull --rebase --autostash origin main || true
+          git push origin HEAD:main
