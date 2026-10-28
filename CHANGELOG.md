@@ -1,3 +1,17 @@
+## Unreleased
+
+- 适配 `music.qqovo.cn` 登录态：上游取消匿名音源，QQ / 汽水 / 网易音源改为 Cookie 会话鉴权
+  - 设置 › 在线音乐 新增「OpenMusic 账号登录」，可粘贴 Cookie、查看剩余有效期、恢复/清除内置凭证
+  - 401 时自动走 `/api/auth/refresh` 续期并重试，Cookie 轮换自动回写
+  - 构建时可用 `--dart-define=QQOVO_COOKIE` 或仓库 Secret `QQOVO_COOKIE` 内置凭证
+  - 无凭证时 QQ / 汽水搜索回落云端搜索，并在音源页给出登录引导
+- 修复 CI：提交 `pubspec.lock` 锁定依赖，避免上游发版打挂构建
+  - `material_ui` 钉 1.5.0（1.6.0+ 的 `RoundedPolygon` 与 `m3e_core` 撞名）
+  - `shared_preferences_foundation` 钉 2.5.7（2.6.x 的 FFI 常量求值错误）
+  - analyze 改为致命，analyze / 打包错误输出为 workflow 注解便于定位
+
+---
+
 ## v13.3.42
 
 - 修复 CI：`material_ui` 依赖要求将 `intl` 升至 `^0.20.2`
