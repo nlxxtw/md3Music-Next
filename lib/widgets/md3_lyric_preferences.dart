@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -118,6 +119,7 @@ class Md3LyricPreferences extends ChangeNotifier {
   /// 从 SharedPreferences 加载。App 启动时调用一次。
   Future<void> load() async {
     if (_loaded) return;
+    try {
     final prefs = await SharedPreferences.getInstance();
     _fontSize = prefs.getDouble(_keyFontSize) ?? defaultUserFontSize;
     _lineSpacing = prefs.getDouble(_keyLineSpacing) ?? defaultLineSpacing;
@@ -128,9 +130,12 @@ class Md3LyricPreferences extends ChangeNotifier {
     _customFontPath = prefs.getString(_keyCustomFontPath);
     _loaded = true;
     notifyListeners();
-    // 若已配置自定义字体，立即尝试加载
+    } catch (e) {
+      _loaded = true;
+      debugPrint('[Md3LyricPreferences] load failed: $e');
+    }
     if (_fontSource == Md3LyricFontSource.custom) {
-      await _tryLoadCustomFont();
+      unawaited(_tryLoadCustomFont());
     }
   }
 

@@ -99,7 +99,7 @@ jobs:
           else
             VERSION_CODE=1
           fi
-          if [ "$UPDATE_CODE" -le "$UPDATE_CODE" ]; then
+          if [ "$VERSION_CODE" -le "$UPDATE_CODE" ]; then
             VERSION_CODE=$((UPDATE_CODE + 1))
           fi
           # 保底：与历史旁路大号 versionCode（2xxx）错开

@@ -48,6 +48,28 @@ Future<void> main() async {
 }
 
 Future<void> _main() async {
+  // 必须在任何插件调用之前绑定引擎。runBootstrap() 超时/失败时也会走到
+  // runApp：若 ensureInitialized 还没跑过，降级启动会再次白屏。
+  WidgetsFlutterBinding.ensureInitialized();
+  ErrorWidget.builder = (details) {
+    return const ColoredBox(
+      color: Color(0xFF1C1B1F),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              '界面渲染失败，请强杀后重开。若持续出现，到设置导出诊断日志。',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFFE6E1E5), fontSize: 14),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
+
   // 启动引导必须有兜底：runBootstrap() 里任一插件抛异常或卡死，都不能让
   // runApp 被跳过——外层 runZonedGuarded 只会记日志，不会渲染，结果就是
   // 用户看到永久白屏（v13.3.43 因 shared_preferences_android 2.5.x 崩在
@@ -56,12 +78,14 @@ Future<void> _main() async {
   var needsUserAgreement = false;
   try {
     final (onboarding, agreement) = await runBootstrap().timeout(
-      const Duration(seconds: 15),
+      const Duration(seconds: 8),
     );
     needsOnboarding = onboarding;
     needsUserAgreement = agreement;
   } catch (e, s) {
-    DiagnosticLogger.instance.e('启动引导失败，降级启动: $e\n$s');
+    try {
+      DiagnosticLogger.instance.e('启动引导失败，降级启动: $e\n$s');
+    } catch (_) {}
   }
 
   runApp(
@@ -95,16 +119,19 @@ Future<(bool, bool)> runBootstrap() async {
   // 内部自带失败兜底，不会中断启动。
   await DiagnosticLogger.instance.init();
 
-  await initializeDateFormatting('zh_CN');
+  try {
+    await initializeDateFormatting('zh_CN');
+  } catch (_) {}
 
   // P0: 无依赖的初始化并行执行，替代串行 await，缩短 runApp 前的阻塞时间。
   // 同时预取 SharedPreferences（onboarding / 用户协议检查复用）。
+  // 每一项都要吞掉异常：prefs 插件一旦抛错，不能把整段 Future.wait 打挂。
   final prefsFuture = SharedPreferences.getInstance();
   await Future.wait([
     // 加载歌词字号/行间距偏好（从 SharedPreferences）
-    LyricPreferences.instance.load(),
+    LyricPreferences.instance.load().catchError((_) {}),
     // 加载 MD3 风格播放页的独立歌词偏好（与 Apple Music 风格完全分离）
-    Md3LyricPreferences.instance.load(),
+    Md3LyricPreferences.instance.load().catchError((_) {}),
     // 恢复屏幕常亮开关状态，供 PlayerProvider/MV 页播放时读取
     WakelockService.instance.init().catchError((_) {}),
     // 初始化均衡器服务（恢复偏好设置，监听播放状态自动绑定）
@@ -170,7 +197,9 @@ Future<(bool, bool)> runBootstrap() async {
   try {
     final prefs = await prefsFuture;
     needsOnboarding = !(prefs.getBool('onboarding_completed') ?? false);
-  } catch (_) {}
+  } catch (_) {
+    needsOnboarding = false;
+  }
 
   // 检测是否需要展示用户协议（首次启动）
   final needsUserAgreement = !(await isUserAgreementAccepted());

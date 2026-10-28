@@ -1,3 +1,14 @@
+# shared_preferences_android 2.5.x 走 Pigeon JNI：R8 若改写 kotlin.coroutines
+# 等类名，release 包会在 SharedPreferences.getInstance() 上 NoSuchMethodError，
+# 启动阶段 runApp 执行不到 → 永久白屏。即便已钉回 2.4.28，也保留这些 keep，
+# 防止 lockfile 漂移后再踩坑。
+-keep class kotlin.Unit { *; }
+-keep class kotlin.Result { *; }
+-keep class kotlin.Result$Failure { *; }
+-keep class kotlin.coroutines.Continuation { *; }
+-keep class kotlin.coroutines.intrinsics.CoroutineSingletons { *; }
+-keep class kotlin.coroutines.intrinsics.IntrinsicsKt { *; }
+
 # JAudioTagger 依赖反射创建标签对象副本，必须保留所有类名和构造函数
 # 否则 R8 混淆后反射调用 NoSuchMethodException: Error finding constructor to create copy
 -keep class org.jaudiotagger.** { *; }

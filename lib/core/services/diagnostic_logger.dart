@@ -223,8 +223,9 @@ class DiagnosticLogger {
     };
     PlatformDispatcher.instance.onError = (error, stack) {
       instance.e('未捕获异常: $error\n$stack');
-      // 返回 false：交给引擎默认处理（该崩溃仍会崩溃，只是先留痕）
-      return false;
+      // 返回 true：当作已处理。插件启动期（尤其 SharedPreferences）的
+      // 异步异常若再交给引擎，release 会直接干掉 isolate，表现就是永久白屏。
+      return true;
     };
   }
 

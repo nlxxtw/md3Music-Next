@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -332,6 +333,7 @@ class LyricPreferences extends ChangeNotifier {
   /// 从 SharedPreferences 加载。App 启动时调用一次。
   Future<void> load() async {
     if (_loaded) return;
+    try {
     final prefs = await SharedPreferences.getInstance();
     // 首次使用（key 不存在）时按设备类型提供差异化默认：
     // 手机 29px/半粗(600)/1.4x；Pad 40px/黑体(900)/0.9x。
@@ -376,9 +378,13 @@ class LyricPreferences extends ChangeNotifier {
             defaultStaggerFromCurrentLine;
     _loaded = true;
     notifyListeners();
-    // 若已配置自定义字体，立即尝试加载（Fire-and-forget，加载完成后会 notifyListeners）
+    } catch (e) {
+      _loaded = true;
+      debugPrint('[LyricPreferences] load failed: $e');
+    }
+    // 自定义字体不得挡住启动：读盘/FontLoader 在部分机型上会卡住。
     if (_fontSource == LyricFontSource.custom) {
-      await _tryLoadCustomFont();
+      unawaited(_tryLoadCustomFont());
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:material_color_utilities/material_color_utilities.dart';
@@ -145,18 +147,32 @@ class ThemeProvider extends ChangeNotifier {
   }
 
   ThemeProvider() {
-    _loadThemeMode();
-    _loadDynamicColor();
-    _loadUseCoverSeedColor();
-    _loadAmStylePlayer();
-    _loadManualSeedColor();
-    _loadOledBlack();
-    _loadDisplayScale();
-    _loadNavLabelBehavior();
-    _loadFontSource();
-    _loadArtistPhotoBackground();
-    _loadLyricDoubleTapToJump();
-    _loadBackgroundImage();
+    unawaited(_hydrate());
+  }
+
+  Future<void> _hydrate() async {
+    Future<void> run(Future<void> Function() fn) async {
+      try {
+        await fn();
+      } catch (e) {
+        debugPrint('[ThemeProvider] load failed: $e');
+      }
+    }
+
+    await Future.wait([
+      run(_loadThemeMode),
+      run(_loadDynamicColor),
+      run(_loadUseCoverSeedColor),
+      run(_loadAmStylePlayer),
+      run(_loadManualSeedColor),
+      run(_loadOledBlack),
+      run(_loadDisplayScale),
+      run(_loadNavLabelBehavior),
+      run(_loadFontSource),
+      run(_loadArtistPhotoBackground),
+      run(_loadLyricDoubleTapToJump),
+      run(_loadBackgroundImage),
+    ]);
   }
 
   Future<void> _loadThemeMode() async {

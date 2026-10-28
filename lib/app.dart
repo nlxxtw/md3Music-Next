@@ -394,7 +394,7 @@ class _AppViewState extends State<_AppView> {
                 // push 出来的所有二级页面，放进任何路由内部都覆盖不到。
                 // 未开启车机模式（或当前页面声明抑制）时本组件原样返回 child，
                 // 布局与改动前完全一致。
-                CarModePanel(child: child!),
+                CarModePanel(child: child ?? const SizedBox.shrink()),
                 const DlnaCastingOverlay(),
                 // 上滑拖拽跟手覆盖层（在 Navigator 之上，拖拽期间显示预览）
                 const PlayerDragOverlay(),
