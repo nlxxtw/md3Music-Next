@@ -1,4 +1,4 @@
-## Unreleased
+## v13.3.43
 
 - 适配 `music.qqovo.cn` 登录态：上游取消匿名音源，QQ / 汽水 / 网易音源改为 Cookie 会话鉴权
   - 设置 › 在线音乐 新增「OpenMusic 账号登录」，可粘贴 Cookie、查看剩余有效期、恢复/清除内置凭证
