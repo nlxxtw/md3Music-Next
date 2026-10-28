@@ -86,6 +86,11 @@ dependency_overrides:
   # "Constant evaluation error"，直接打挂 kernel_snapshot。
   # 2.5.7 是 10-01 那次成功构建实际用到的版本，钉住即可。
   shared_preferences_foundation: 2.5.7
+  # 安卓实现同理：2.5.0（10-17）把内部实现换成 Pigeon JNI 后，release 构建在
+  # 启动阶段反复出事（2.5.2 修 NoSuchMethodError、2.5.4 修主线程同步磁盘 I/O），
+  # 2.5.4 仍会在启动时把 runBootstrap() 打挂 → runApp 执行不到 → 永久白屏。
+  # 2.4.28 是 v13.3.42 用过的版本（未走 Pigeon JNI），先钉回去。
+  shared_preferences_android: 2.4.28
 
 flutter:
   uses-material-design: true

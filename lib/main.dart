@@ -48,7 +48,21 @@ Future<void> main() async {
 }
 
 Future<void> _main() async {
-  final (needsOnboarding, needsUserAgreement) = await runBootstrap();
+  // 启动引导必须有兜底：runBootstrap() 里任一插件抛异常或卡死，都不能让
+  // runApp 被跳过——外层 runZonedGuarded 只会记日志，不会渲染，结果就是
+  // 用户看到永久白屏（v13.3.43 因 shared_preferences_android 2.5.x 崩在
+  // 启动阶段就是这么挂的）。失败时降级启动，至少把界面渲染出来并留下日志。
+  var needsOnboarding = false;
+  var needsUserAgreement = false;
+  try {
+    final (onboarding, agreement) = await runBootstrap().timeout(
+      const Duration(seconds: 15),
+    );
+    needsOnboarding = onboarding;
+    needsUserAgreement = agreement;
+  } catch (e, s) {
+    DiagnosticLogger.instance.e('启动引导失败，降级启动: $e\n$s');
+  }
 
   runApp(
     MyApp(
